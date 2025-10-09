@@ -106,6 +106,8 @@ class BinarizeLinear(nn.Linear):
 
         if input.size(1) != 784:
             input_b=binarized(input)
+        else:
+            input_b = input  # Don't binarize first layer input
         weight_b=binarized(self.weight)
         out = nn.functional.linear(input_b,weight_b)
         if not self.bias is None:
