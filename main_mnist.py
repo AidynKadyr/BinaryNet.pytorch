@@ -67,7 +67,7 @@ class Net(nn.Module):
         self.htanh3 = nn.Hardtanh()
         self.bn3 = nn.BatchNorm1d(2048*self.infl_ratio)
         self.fc4 = nn.Linear(2048*self.infl_ratio, 10)
-        self.logsoftmax=nn.LogSoftmax()
+        self.logsoftmax=nn.LogSoftmax(dim=1) 
         self.drop=nn.Dropout(0.5)
 
     def forward(self, x):
@@ -87,7 +87,7 @@ class Net(nn.Module):
 
 model = Net()
 if args.cuda:
-    torch.cuda.set_device(3)
+    torch.cuda.set_device(0)
     model.cuda()
 
 
