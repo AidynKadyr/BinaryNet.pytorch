@@ -256,7 +256,7 @@ def test(model, device, test_loader, criterion, args):
                 pred = output.argmax(dim=1)
             correct += pred.eq(target).sum().item()
     
-    test_loss /= len(test_loader)
+    test_loss /= len(test_loader.dataset)  # Match main_mnist.py: divide by number of samples
     accuracy = 100. * correct / len(test_loader.dataset)
     
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
