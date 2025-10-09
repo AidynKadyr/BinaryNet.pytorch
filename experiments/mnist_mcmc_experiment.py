@@ -98,7 +98,9 @@ class VlogLoss(nn.Module):
         """
         stabilities = self.compute_stabilities(output, target)
         potentials = self.vlog_potential(stabilities)
-        loss = self.beta * potentials.mean()
+        #loss = self.beta * potentials.mean()
+        loss = potentials.mean()
+
         return loss
     
     def update_beta(self, new_beta):
