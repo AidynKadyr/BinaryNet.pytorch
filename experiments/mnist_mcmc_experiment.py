@@ -101,8 +101,7 @@ class VlogLoss(nn.Module):
         """
         stabilities = self.compute_stabilities(output, target)
         potentials = self.vlog_potential(stabilities)
-        #loss = self.beta * potentials.mean()
-        loss = potentials.mean()
+        loss = self.beta * potentials.mean()  # β-annealing enabled!
 
         return loss
     
@@ -367,10 +366,10 @@ def main():
     # Vlog hyperparameters
     parser.add_argument('--b-value', type=float, default=10.0,
                         help='b (tau) parameter for Vlog potential (default: 10.0)')
-    parser.add_argument('--beta-start', type=float, default=0.1,
-                        help='Starting beta for annealing (default: 0.1)')
-    parser.add_argument('--beta-end', type=float, default=100.0,
-                        help='Ending beta for annealing (default: 100.0)')
+    parser.add_argument('--beta-start', type=float, default=0.5,
+                        help='Starting beta for annealing (default: 0.5)')
+    parser.add_argument('--beta-end', type=float, default=5.0,
+                        help='Ending beta for annealing (default: 5.0)')
     parser.add_argument('--beta-fixed', type=float, default=1.0,
                         help='Fixed beta value when not annealing (default: 1.0)')
     parser.add_argument('--normalization-dim', type=int, default=10,

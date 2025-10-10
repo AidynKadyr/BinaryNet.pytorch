@@ -1,0 +1,33 @@
+Experiment: mnist_vlog_fixed_b5.0_beta1.0_e10_bs4096_lr0.01
+============================================================
+
+CONFIGURATION:
+Loss Type: vlog_fixed
+Epochs: 10
+Batch Size: 4096
+Learning Rate: 0.01
+Num Workers: 4
+b value: 5.0
+Fixed beta: 1.0
+
+TRAINING TIME:
+Total Time: 160.6s (2.68 min)
+Time per Epoch: 16.1s
+
+RESULTS:
+Final Test Accuracy: 96.06%
+Best Test Accuracy: 96.06% (Epoch 10)
+
+PER-EPOCH RESULTS:
+Epoch    Train Loss      Test Loss       Train Acc    Test Acc    
+----------------------------------------------------------------------
+1        7.820312        5.456723        48.45       % 70.45       %
+2        1.457747        0.863853        82.66       % 87.64       %
+3        0.024668        0.025938        90.04       % 90.96       %
+4        -0.713976       -0.731809       92.56       % 92.58       %
+5        -1.280787       -1.320303       94.12       % 94.03       %
+6        -1.829934       -1.704293       95.23       % 94.46       %
+7        -2.016495       -1.227884       95.38       % 93.71       %
+8        -2.023134       -1.282712       95.23       % 94.08       %
+9        -2.447890       -2.291272       96.17       % 95.56       %
+10       -3.073232       -2.753978       97.07       % 96.06       %
