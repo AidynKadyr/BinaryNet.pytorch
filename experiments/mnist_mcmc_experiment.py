@@ -19,6 +19,9 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from models.binarized_modules import BinarizeLinear, Binarize
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for saving figures
 
 
 # ============================================================================
@@ -176,6 +179,71 @@ class Net(nn.Module):
 
 
 # ============================================================================
+# Plotting and Visualization
+# ============================================================================
+
+def plot_training_curves(train_losses, test_losses, train_accs, test_accs, 
+                         experiment_name, save_dir='experiments/plots', args=None):
+    """
+    Plot and save training curves (loss and accuracy)
+    
+    Args:
+        train_losses: List of training losses per epoch
+        test_losses: List of test losses per epoch
+        train_accs: List of training accuracies per epoch
+        test_accs: List of test accuracies per epoch
+        experiment_name: Name for the plot file
+        save_dir: Directory to save plots
+        args: Arguments dict for adding experiment details to title
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+    epochs = range(1, len(train_losses) + 1)
+    
+    # Plot Loss
+    ax1.plot(epochs, train_losses, 'b-', label='Train Loss', linewidth=2)
+    ax1.plot(epochs, test_losses, 'r-', label='Test Loss', linewidth=2)
+    ax1.set_xlabel('Epoch', fontsize=12)
+    ax1.set_ylabel('Loss', fontsize=12)
+    ax1.set_title('Loss vs Epochs', fontsize=14, fontweight='bold')
+    ax1.legend(fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot Accuracy
+    ax2.plot(epochs, train_accs, 'b-', label='Train Accuracy', linewidth=2)
+    ax2.plot(epochs, test_accs, 'r-', label='Test Accuracy', linewidth=2)
+    ax2.set_xlabel('Epoch', fontsize=12)
+    ax2.set_ylabel('Accuracy (%)', fontsize=12)
+    ax2.set_title('Accuracy vs Epochs', fontsize=14, fontweight='bold')
+    ax2.legend(fontsize=11)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim([0, 100])
+    
+    # Add overall title with experiment details
+    if args is not None:
+        if args.loss_type == 'ce':
+            title = f'Cross-Entropy Loss | LR={args.lr} | Batch={args.batch_size}'
+        elif args.loss_type == 'vlog_fixed':
+            title = f'Vlog Loss (Fixed β={args.beta_fixed}, b={args.b_value}) | LR={args.lr} | Batch={args.batch_size}'
+        elif args.loss_type == 'vlog_annealing':
+            title = f'Vlog Loss (β: {args.beta_start}→{args.beta_end}, b={args.b_value}) | LR={args.lr} | Batch={args.batch_size}'
+        else:
+            title = experiment_name
+        fig.suptitle(title, fontsize=16, fontweight='bold', y=1.02)
+    
+    plt.tight_layout()
+    
+    # Save figure
+    save_path = os.path.join(save_dir, f'{experiment_name}.png')
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    print(f"\n📊 Plot saved to: {save_path}")
+    plt.close()
+    
+    return save_path
+
+
+# ============================================================================
 # Training and Testing
 # ============================================================================
 
@@ -305,6 +373,12 @@ def main():
     parser.add_argument('--normalization-dim', type=int, default=10,
                         help='Dimension for stability normalization (default: 10 for output classes)')
     
+    # Plotting and saving options
+    parser.add_argument('--plot-dir', type=str, default='experiments/plots',
+                        help='Directory to save plots (default: experiments/plots)')
+    parser.add_argument('--no-plot', action='store_true', default=False,
+                        help='Disable plotting')
+    
     args = parser.parse_args()
     
     # Setup
@@ -384,6 +458,18 @@ def main():
     print("Training Complete!")
     print(f"Final Test Accuracy: {test_accs[-1]:.2f}%")
     print(f"Best Test Accuracy: {max(test_accs):.2f}% (Epoch {test_accs.index(max(test_accs))+1})")
+    
+    # Plot training curves
+    if not args.no_plot:
+        experiment_name = f'mnist_{args.loss_type}'
+        if args.loss_type.startswith('vlog'):
+            experiment_name += f'_b{args.b_value}'
+            if args.loss_type == 'vlog_annealing':
+                experiment_name += f'_beta{args.beta_start}-{args.beta_end}'
+            else:
+                experiment_name += f'_beta{args.beta_fixed}'
+        plot_training_curves(train_losses, test_losses, train_accs, test_accs,
+                           experiment_name, save_dir=args.plot_dir, args=args)
     
     # Save results
     results_dir = 'experiments/results'
