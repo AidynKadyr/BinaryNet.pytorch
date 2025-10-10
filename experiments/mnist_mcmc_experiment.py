@@ -461,13 +461,20 @@ def main():
     
     # Plot training curves
     if not args.no_plot:
+        # Create unique experiment name with all key parameters
         experiment_name = f'mnist_{args.loss_type}'
+        
+        # Add loss-specific parameters
         if args.loss_type.startswith('vlog'):
             experiment_name += f'_b{args.b_value}'
             if args.loss_type == 'vlog_annealing':
                 experiment_name += f'_beta{args.beta_start}-{args.beta_end}'
             else:
                 experiment_name += f'_beta{args.beta_fixed}'
+        
+        # Add training parameters (always included for uniqueness)
+        experiment_name += f'_e{args.epochs}_bs{args.batch_size}_lr{args.lr}'
+        
         plot_training_curves(train_losses, test_losses, train_accs, test_accs,
                            experiment_name, save_dir=args.plot_dir, args=args)
     
