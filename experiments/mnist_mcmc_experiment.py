@@ -539,9 +539,11 @@ def main():
         f.write(f"Best Test Accuracy: {max(test_accs):.2f}% (Epoch {test_accs.index(max(test_accs))+1})\n")
         
         # Detailed per-epoch results
-        f.write(f"\nPER-EPOCH ACCURACIES:\n")
-        for i, acc in enumerate(test_accs):
-            f.write(f"Epoch {i+1}: {acc:.2f}%\n")
+        f.write(f"\nPER-EPOCH RESULTS:\n")
+        f.write(f"{'Epoch':<8} {'Train Loss':<15} {'Test Loss':<15} {'Train Acc':<12} {'Test Acc':<12}\n")
+        f.write(f"{'-'*70}\n")
+        for i in range(len(test_accs)):
+            f.write(f"{i+1:<8} {train_losses[i]:<15.6f} {test_losses[i]:<15.6f} {train_accs[i]:<12.2f}% {test_accs[i]:<12.2f}%\n")
     
     print(f"\n💾 Results saved to: {results_file}")
 

@@ -1,0 +1,29 @@
+Experiment: mnist_ce_e10_bs2048_lr0.01
+============================================================
+
+CONFIGURATION:
+Loss Type: ce
+Epochs: 10
+Batch Size: 2048
+Learning Rate: 0.01
+Num Workers: 4
+
+TRAINING TIME:
+Total Time: 138.2s (2.30 min)
+Time per Epoch: 13.8s
+
+RESULTS:
+Final Test Accuracy: 96.12%
+Best Test Accuracy: 96.19% (Epoch 8)
+
+PER-EPOCH ACCURACIES:
+Epoch 1: 87.51%
+Epoch 2: 91.42%
+Epoch 3: 93.40%
+Epoch 4: 94.15%
+Epoch 5: 95.31%
+Epoch 6: 95.39%
+Epoch 7: 95.75%
+Epoch 8: 96.19%
+Epoch 9: 95.79%
+Epoch 10: 96.12%
