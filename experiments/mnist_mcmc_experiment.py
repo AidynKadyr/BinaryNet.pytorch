@@ -2,8 +2,9 @@
 MNIST Binary Network with MCMC-inspired Loss Functions
 Compares:
 1. Standard Cross-Entropy
-2. Vlog potential (fixed beta, constant b)
-3. Vlog potential with beta-annealing (beta: small -> large)
+2. HingeLoss (SVM-style margin-based)
+3. Vlog potential (fixed beta, constant b)
+4. Vlog potential with beta-annealing (beta: small -> large)
 """
 
 from __future__ import print_function
@@ -22,6 +23,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for saving figures
+
+
+# ============================================================================
+# Loss Functions
+# ============================================================================
+
+class HingeLoss(nn.Module):
+    """
+    SVM-style Hinge Loss for multi-class classification
+    Loss = mean(max(0, margin - y * f(x)))
+    where y ∈ {-1, +1}, margin = 1.0
+    """
+    def __init__(self, margin=1.0):
+        super(HingeLoss, self).__init__()
+        self.margin = margin
+    
+    def forward(self, input, target_onehot):
+        """
+        Args:
+            input: (batch_size, num_classes) - raw logits
+            target_onehot: (batch_size, num_classes) - one-hot encoded with -1/+1
+        """
+        # Hinge loss: max(0, margin - y * f(x))
+        output = self.margin - input.mul(target_onehot)
+        output = torch.clamp(output, min=0)  # ReLU: max(0, x)
+        return output.mean()
 
 
 # ============================================================================
@@ -223,6 +250,8 @@ def plot_training_curves(train_losses, test_losses, train_accs, test_accs,
     if args is not None:
         if args.loss_type == 'ce':
             title = f'Cross-Entropy Loss | LR={args.lr} | Batch={args.batch_size}'
+        elif args.loss_type == 'hinge':
+            title = f'Hinge Loss (margin={args.hinge_margin}) | LR={args.lr} | Batch={args.batch_size}'
         elif args.loss_type == 'vlog_fixed':
             title = f'Vlog Loss (Fixed β={args.beta_fixed}, b={args.b_value}) | LR={args.lr} | Batch={args.batch_size}'
         elif args.loss_type == 'vlog_annealing':
@@ -262,13 +291,21 @@ def train(model, device, train_loader, optimizer, criterion, epoch, args, beta_s
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         
-        # For Vlog loss, we need raw logits; for CrossEntropy, we need log_softmax
-        if isinstance(criterion, VlogLoss):
-            output = model(data, return_logits=True)
+        # Different output formats for different losses
+        if isinstance(criterion, VlogLoss) or isinstance(criterion, HingeLoss):
+            output = model(data, return_logits=True)  # Need raw logits
         else:
-            output = model(data, return_logits=False)
+            output = model(data, return_logits=False)  # CrossEntropy uses log_softmax
         
-        loss = criterion(output, target)
+        # HingeLoss requires one-hot encoding with {-1, +1}
+        if isinstance(criterion, HingeLoss):
+            num_classes = output.size(1)
+            target_onehot = torch.zeros(target.size(0), num_classes, device=device)
+            target_onehot.fill_(-1)
+            target_onehot.scatter_(1, target.unsqueeze(1), 1)
+            loss = criterion(output, target_onehot)
+        else:
+            loss = criterion(output, target)
         loss.backward()
         
         # Binary network weight update logic
@@ -282,11 +319,8 @@ def train(model, device, train_loader, optimizer, criterion, epoch, args, beta_s
         
         total_loss += loss.item()
         
-        # Calculate accuracy
-        if isinstance(criterion, VlogLoss):
-            pred = output.argmax(dim=1)
-        else:
-            pred = output.argmax(dim=1)
+        # Calculate accuracy (same for all losses)
+        pred = output.argmax(dim=1)
         correct += pred.eq(target).sum().item()
         
         if batch_idx % args.log_interval == 0:
@@ -308,19 +342,24 @@ def test(model, device, test_loader, criterion, args):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             
-            # For Vlog loss, we need raw logits; for CrossEntropy, we need log_softmax
-            if isinstance(criterion, VlogLoss):
-                output = model(data, return_logits=True)
+            # Different output formats for different losses
+            if isinstance(criterion, VlogLoss) or isinstance(criterion, HingeLoss):
+                output = model(data, return_logits=True)  # Need raw logits
             else:
-                output = model(data, return_logits=False)
+                output = model(data, return_logits=False)  # CrossEntropy uses log_softmax
             
-            test_loss += criterion(output, target).item()
-            
-            # Get predictions
-            if isinstance(criterion, VlogLoss):
-                pred = output.argmax(dim=1)
+            # HingeLoss requires one-hot encoding with {-1, +1}
+            if isinstance(criterion, HingeLoss):
+                num_classes = output.size(1)
+                target_onehot = torch.zeros(target.size(0), num_classes, device=device)
+                target_onehot.fill_(-1)
+                target_onehot.scatter_(1, target.unsqueeze(1), 1)
+                test_loss += criterion(output, target_onehot).item()
             else:
-                pred = output.argmax(dim=1)
+                test_loss += criterion(output, target).item()
+            
+            # Get predictions (same for all losses)
+            pred = output.argmax(dim=1)
             correct += pred.eq(target).sum().item()
     
     # Divide by number of batches (same as training) for comparable scale
@@ -360,8 +399,12 @@ def main():
     
     # Loss function selection
     parser.add_argument('--loss-type', type=str, default='ce', 
-                        choices=['ce', 'vlog_fixed', 'vlog_annealing'],
-                        help='Loss function: ce (CrossEntropy), vlog_fixed (Vlog with constant beta), vlog_annealing (Vlog with beta annealing)')
+                        choices=['ce', 'hinge', 'vlog_fixed', 'vlog_annealing'],
+                        help='Loss function: ce (CrossEntropy), hinge (SVM-style), vlog_fixed (Vlog with constant beta), vlog_annealing (Vlog with beta annealing)')
+    
+    # Hinge loss hyperparameters
+    parser.add_argument('--hinge-margin', type=float, default=1.0,
+                        help='Margin for Hinge loss (default: 1.0)')
     
     # Vlog hyperparameters
     parser.add_argument('--b-value', type=float, default=10.0,
@@ -420,6 +463,9 @@ def main():
     if args.loss_type == 'ce':
         criterion = nn.CrossEntropyLoss()
         print("Using Cross-Entropy Loss")
+    elif args.loss_type == 'hinge':
+        criterion = HingeLoss(margin=args.hinge_margin).to(device)
+        print(f"Using Hinge Loss (margin={args.hinge_margin})")
     elif args.loss_type == 'vlog_fixed':
         criterion = VlogLoss(b=args.b_value, beta=args.beta_fixed, 
                             normalization_dim=args.normalization_dim).to(device)
@@ -482,7 +528,9 @@ def main():
     experiment_name = f'mnist_{args.loss_type}'
     
     # Add loss-specific parameters
-    if args.loss_type.startswith('vlog'):
+    if args.loss_type == 'hinge':
+        experiment_name += f'_m{args.hinge_margin}'
+    elif args.loss_type.startswith('vlog'):
         experiment_name += f'_b{args.b_value}'
         if args.loss_type == 'vlog_annealing':
             experiment_name += f'_beta{args.beta_start}-{args.beta_end}'
@@ -521,7 +569,9 @@ def main():
         f.write(f"Learning Rate: {args.lr}\n")
         f.write(f"Num Workers: {args.num_workers}\n")
         
-        if args.loss_type.startswith('vlog'):
+        if args.loss_type == 'hinge':
+            f.write(f"Hinge Margin: {args.hinge_margin}\n")
+        elif args.loss_type.startswith('vlog'):
             f.write(f"b value: {args.b_value}\n")
             if args.loss_type == 'vlog_annealing':
                 f.write(f"Beta annealing: {args.beta_start} -> {args.beta_end}\n")
