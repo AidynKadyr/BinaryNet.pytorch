@@ -355,6 +355,8 @@ def main():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--num-workers', type=int, default=4, metavar='N',
+                        help='number of data loading workers (default: 4, use 0 for Windows)')
     
     # Loss function selection
     parser.add_argument('--loss-type', type=str, default='ce', 
@@ -386,7 +388,13 @@ def main():
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if use_cuda else "cpu")
     
-    kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
+    # Data loading optimization
+    kwargs = {'num_workers': args.num_workers, 'pin_memory': True} if use_cuda else {}
+    if use_cuda:
+        print(f"✅ Using GPU: {torch.cuda.get_device_name(0)}")
+        print(f"   Data workers: {args.num_workers}")
+    else:
+        print("⚠️ Using CPU (training will be slow!)")
     
     # Data loaders
     train_loader = torch.utils.data.DataLoader(
@@ -437,6 +445,10 @@ def main():
     test_losses = []
     test_accs = []
     
+    # Start timing
+    import time
+    start_time = time.time()
+    
     for epoch in range(1, args.epochs + 1):
         # Learning rate decay
         if epoch % 40 == 0:
@@ -453,52 +465,85 @@ def main():
         test_losses.append(test_loss)
         test_accs.append(test_acc)
     
+    # Calculate training time
+    end_time = time.time()
+    training_time = end_time - start_time
+    training_time_minutes = training_time / 60
+    
     # Final summary
     print("="*70)
     print("Training Complete!")
+    print(f"Training Time: {training_time:.1f}s ({training_time_minutes:.2f} min)")
+    print(f"Time per Epoch: {training_time/args.epochs:.1f}s")
     print(f"Final Test Accuracy: {test_accs[-1]:.2f}%")
     print(f"Best Test Accuracy: {max(test_accs):.2f}% (Epoch {test_accs.index(max(test_accs))+1})")
     
+    # Create unique experiment name with all key parameters
+    experiment_name = f'mnist_{args.loss_type}'
+    
+    # Add loss-specific parameters
+    if args.loss_type.startswith('vlog'):
+        experiment_name += f'_b{args.b_value}'
+        if args.loss_type == 'vlog_annealing':
+            experiment_name += f'_beta{args.beta_start}-{args.beta_end}'
+        else:
+            experiment_name += f'_beta{args.beta_fixed}'
+    
+    # Add training parameters (always included for uniqueness)
+    experiment_name += f'_e{args.epochs}_bs{args.batch_size}_lr{args.lr}'
+    
     # Plot training curves
     if not args.no_plot:
-        # Create unique experiment name with all key parameters
-        experiment_name = f'mnist_{args.loss_type}'
-        
-        # Add loss-specific parameters
-        if args.loss_type.startswith('vlog'):
-            experiment_name += f'_b{args.b_value}'
-            if args.loss_type == 'vlog_annealing':
-                experiment_name += f'_beta{args.beta_start}-{args.beta_end}'
-            else:
-                experiment_name += f'_beta{args.beta_fixed}'
-        
-        # Add training parameters (always included for uniqueness)
-        experiment_name += f'_e{args.epochs}_bs{args.batch_size}_lr{args.lr}'
-        
         plot_training_curves(train_losses, test_losses, train_accs, test_accs,
                            experiment_name, save_dir=args.plot_dir, args=args)
     
-    # Save results
-    results_dir = 'experiments/results'
+    # Save results to same base directory as plots
+    # If plot_dir ends with 'plots', go up one level, otherwise use plot_dir's parent
+    if args.plot_dir.endswith('plots'):
+        base_dir = os.path.dirname(args.plot_dir)
+    else:
+        base_dir = args.plot_dir
+    results_dir = os.path.join(base_dir, 'results')
     os.makedirs(results_dir, exist_ok=True)
-    results_file = os.path.join(results_dir, f'mnist_{args.loss_type}_results.txt')
+    
+    # Use same naming convention as plots
+    results_file = os.path.join(results_dir, f'{experiment_name}.txt')
     
     with open(results_file, 'w') as f:
+        f.write(f"Experiment: {experiment_name}\n")
+        f.write(f"="*60 + "\n\n")
+        
+        # Training configuration
+        f.write(f"CONFIGURATION:\n")
         f.write(f"Loss Type: {args.loss_type}\n")
         f.write(f"Epochs: {args.epochs}\n")
+        f.write(f"Batch Size: {args.batch_size}\n")
+        f.write(f"Learning Rate: {args.lr}\n")
+        f.write(f"Num Workers: {args.num_workers}\n")
+        
         if args.loss_type.startswith('vlog'):
             f.write(f"b value: {args.b_value}\n")
             if args.loss_type == 'vlog_annealing':
                 f.write(f"Beta annealing: {args.beta_start} -> {args.beta_end}\n")
             else:
                 f.write(f"Fixed beta: {args.beta_fixed}\n")
-        f.write(f"\nFinal Test Accuracy: {test_accs[-1]:.2f}%\n")
+        
+        # Training time
+        f.write(f"\nTRAINING TIME:\n")
+        f.write(f"Total Time: {training_time:.1f}s ({training_time_minutes:.2f} min)\n")
+        f.write(f"Time per Epoch: {training_time/args.epochs:.1f}s\n")
+        
+        # Results
+        f.write(f"\nRESULTS:\n")
+        f.write(f"Final Test Accuracy: {test_accs[-1]:.2f}%\n")
         f.write(f"Best Test Accuracy: {max(test_accs):.2f}% (Epoch {test_accs.index(max(test_accs))+1})\n")
-        f.write(f"\nTest Accuracies per epoch:\n")
+        
+        # Detailed per-epoch results
+        f.write(f"\nPER-EPOCH ACCURACIES:\n")
         for i, acc in enumerate(test_accs):
             f.write(f"Epoch {i+1}: {acc:.2f}%\n")
     
-    print(f"\nResults saved to {results_file}")
+    print(f"\n💾 Results saved to: {results_file}")
 
 
 if __name__ == '__main__':
