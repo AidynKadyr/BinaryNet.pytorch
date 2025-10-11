@@ -2,6 +2,10 @@
 
 This folder contains the analysis script and generated reports.
 
+**📊 Important**: All plots contain **both Loss AND Accuracy curves** side-by-side:
+- Left panel: Loss (train vs test)
+- Right panel: Accuracy (train vs test)
+
 ## Usage
 
 ```bash

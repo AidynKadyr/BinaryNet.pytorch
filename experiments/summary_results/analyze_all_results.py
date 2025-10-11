@@ -281,7 +281,8 @@ def generate_markdown_report(results, output_file):
         
         # Plots Section
         f.write("## 📊 Training Curves\n\n")
-        f.write("Below are the training curves for all successful experiments:\n\n")
+        f.write("Below are the training curves for all successful experiments.\n\n")
+        f.write("**Note**: Each plot shows both **Loss** (left) and **Accuracy** (right) curves with train/test comparison.\n\n")
         
         # Group successful experiments by loss type for plotting
         for loss_type in sorted(set(r.loss_type for r in successful)):
@@ -295,6 +296,7 @@ def generate_markdown_report(results, output_file):
                     f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs\n\n")
                     f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
                     f.write(f"![{r.experiment_name}]({r.plot_file})\n\n")
+                    f.write(f"*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*\n\n")
                 else:
                     f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs\n\n")
                     f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
@@ -516,6 +518,7 @@ def generate_html_report(results, output_file):
         
         # Training curves with embedded plots
         f.write("<h2>📊 Training Curves</h2>\n")
+        f.write("<p><strong>Note:</strong> Each plot shows both <strong>Loss</strong> (left panel) and <strong>Accuracy</strong> (right panel) curves with train/test comparison.</p>\n")
         
         for loss_type in sorted(set(r.loss_type for r in successful)):
             loss_results = [r for r in successful if r.loss_type == loss_type]

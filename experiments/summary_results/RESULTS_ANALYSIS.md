@@ -140,7 +140,9 @@ The following configurations resulted in training failures (typically loss explo
 
 ## 📊 Training Curves
 
-Below are the training curves for all successful experiments:
+Below are the training curves for all successful experiments.
+
+**Note**: Each plot shows both **Loss** (left) and **Accuracy** (right) curves with train/test comparison.
 
 ### Cross-Entropy
 
@@ -150,11 +152,15 @@ Below are the training curves for all successful experiments:
 
 ![mnist_ce_e10_bs2048_lr0.01](../plots\mnist_ce_e10_bs2048_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### — - 10 epochs
 
 **Best Test Accuracy**: 95.64%
 
 ![mnist_ce_e10_bs4096_lr0.01](../plots\mnist_ce_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 ### Hinge Loss
 
@@ -164,11 +170,15 @@ Below are the training curves for all successful experiments:
 
 ![mnist_hinge_m1.0_e20_bs4096_lr0.01](../plots\mnist_hinge_m1.0_e20_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### margin=1.0 - 10 epochs
 
 **Best Test Accuracy**: 94.16%
 
 ![mnist_hinge_m1.0_e10_bs4096_lr0.01](../plots\mnist_hinge_m1.0_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 ### Hinge + β-Annealing
 
@@ -178,11 +188,15 @@ Below are the training curves for all successful experiments:
 
 ![mnist_hinge_beta_annealing_m1.0_beta0.5-5.0_e20_bs4096_lr0.01](../plots\mnist_hinge_beta_annealing_m1.0_beta0.5-5.0_e20_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### margin=1.0, β: 0.5 -> 5.0 - 10 epochs
 
 **Best Test Accuracy**: 95.83%
 
 ![mnist_hinge_beta_annealing_m1.0_beta0.5-5.0_e10_bs4096_lr0.01](../plots\mnist_hinge_beta_annealing_m1.0_beta0.5-5.0_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 ### Vlog + β-Annealing
 
@@ -192,11 +206,15 @@ Below are the training curves for all successful experiments:
 
 ![mnist_vlog_annealing_b5.0_beta0.5-5.0_e20_bs4096_lr0.01](../plots\mnist_vlog_annealing_b5.0_beta0.5-5.0_e20_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### b=5.0, β: 0.5 -> 100.0 - 20 epochs
 
 **Best Test Accuracy**: 97.28%
 
 ![mnist_vlog_annealing_b5.0_beta0.5-100.0_e20_bs4096_lr0.01](../plots\mnist_vlog_annealing_b5.0_beta0.5-100.0_e20_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 #### b=5.0, β: 0.5 -> 100.0 - 10 epochs
 
@@ -204,11 +222,15 @@ Below are the training curves for all successful experiments:
 
 ![mnist_vlog_annealing_b5.0_beta0.5-100.0_e10_bs4096_lr0.01](../plots\mnist_vlog_annealing_b5.0_beta0.5-100.0_e10_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### b=5.0, β: 0.5 -> 5.0 - 10 epochs
 
 **Best Test Accuracy**: 96.70%
 
 ![mnist_vlog_annealing_b5.0_beta0.5-5.0_e10_bs4096_lr0.01](../plots\mnist_vlog_annealing_b5.0_beta0.5-5.0_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 ### Vlog (Fixed)
 
@@ -218,11 +240,15 @@ Below are the training curves for all successful experiments:
 
 ![mnist_vlog_fixed_b2.0_beta1.0_e10_bs4096_lr0.01](../plots\mnist_vlog_fixed_b2.0_beta1.0_e10_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### b=1.0, β=1.0 - 10 epochs
 
 **Best Test Accuracy**: 97.24%
 
 ![mnist_vlog_fixed_b1.0_beta1.0_e10_bs4096_lr0.01](../plots\mnist_vlog_fixed_b1.0_beta1.0_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 #### b=5.0, β=1.0 - 10 epochs
 
@@ -230,17 +256,23 @@ Below are the training curves for all successful experiments:
 
 ![mnist_vlog_fixed_b5.0_beta1.0_e10_bs4096_lr0.01](../plots\mnist_vlog_fixed_b5.0_beta1.0_e10_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### b=10.0, β=1.0 - 10 epochs
 
 **Best Test Accuracy**: 94.67%
 
 ![mnist_vlog_fixed_b10.0_beta1.0_e10_bs4096_lr0.01](../plots\mnist_vlog_fixed_b10.0_beta1.0_e10_bs4096_lr0.01.png)
 
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
 #### b=20.0, β=1.0 - 10 epochs
 
 **Best Test Accuracy**: 93.33%
 
 ![mnist_vlog_fixed_b20.0_beta1.0_e10_bs4096_lr0.01](../plots\mnist_vlog_fixed_b20.0_beta1.0_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
 ---
 
