@@ -1,21 +1,21 @@
-Experiment: mnist_hinge_m1.0_e10_bs4096_lr0.01
+Experiment: mnist_hinge_m1.0_e20_bs4096_lr0.01
 ============================================================
 
 CONFIGURATION:
 Loss Type: hinge
-Epochs: 10
+Epochs: 20
 Batch Size: 4096
 Learning Rate: 0.01
 Num Workers: 4
 Hinge Margin: 1.0
 
 TRAINING TIME:
-Total Time: 168.0s (2.80 min)
-Time per Epoch: 16.8s
+Total Time: 324.9s (5.42 min)
+Time per Epoch: 16.2s
 
 RESULTS:
-Final Test Accuracy: 94.16%
-Best Test Accuracy: 94.16% (Epoch 10)
+Final Test Accuracy: 96.79%
+Best Test Accuracy: 96.86% (Epoch 19)
 
 PER-EPOCH RESULTS:
 Epoch    Train Loss      Test Loss       Train Acc    Test Acc    
@@ -30,3 +30,13 @@ Epoch    Train Loss      Test Loss       Train Acc    Test Acc
 8        0.044426        0.087524        93.43       % 92.89       %
 9        0.038913        0.091287        94.15       % 93.47       %
 10       0.034241        0.081683        94.78       % 94.16       %
+11       0.030097        0.065022        95.52       % 94.41       %
+12       0.026403        0.068376        96.01       % 94.77       %
+13       0.023279        0.058237        96.50       % 95.52       %
+14       0.019997        0.052053        97.05       % 95.97       %
+15       0.017661        0.044819        97.38       % 96.23       %
+16       0.015143        0.044244        97.78       % 96.52       %
+17       0.012999        0.041621        98.15       % 96.40       %
+18       0.011440        0.047255        98.39       % 96.02       %
+19       0.010350        0.040705        98.53       % 96.86       %
+20       0.008569        0.044194        98.81       % 96.79       %
