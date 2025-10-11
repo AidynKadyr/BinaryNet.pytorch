@@ -22,6 +22,8 @@ The script generates two files in this folder:
 - `RESULTS_ANALYSIS.md` - Markdown report with tables and plot references
 - `RESULTS_ANALYSIS.html` - Self-contained HTML report with embedded plots
 
+**Important**: Reports include plots for **ALL experiments** (successful and failed) to show complete training dynamics.
+
 ## Options
 
 ```bash

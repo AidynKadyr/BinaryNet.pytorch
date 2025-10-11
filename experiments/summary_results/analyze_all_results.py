@@ -109,7 +109,8 @@ class ExperimentResult:
         for plot_dir in possible_dirs:
             plot_path = os.path.join(plot_dir, f'{base_name}.png')
             if os.path.exists(plot_path):
-                return plot_path
+                # Convert to forward slashes for cross-platform compatibility (especially GitHub)
+                return plot_path.replace('\\', '/')
         
         return None
     
@@ -281,25 +282,35 @@ def generate_markdown_report(results, output_file):
         
         # Plots Section
         f.write("## 📊 Training Curves\n\n")
-        f.write("Below are the training curves for all successful experiments.\n\n")
+        f.write("Below are the training curves for **all experiments** (successful and failed).\n\n")
         f.write("**Note**: Each plot shows both **Loss** (left) and **Accuracy** (right) curves with train/test comparison.\n\n")
         
-        # Group successful experiments by loss type for plotting
-        for loss_type in sorted(set(r.loss_type for r in successful)):
-            loss_results = [r for r in successful if r.loss_type == loss_type]
-            loss_results = sorted(loss_results, key=lambda x: x.best_accuracy, reverse=True)
+        # Group ALL experiments by loss type for plotting
+        for loss_type in sorted(set(r.loss_type for r in results)):
+            loss_results = [r for r in results if r.loss_type == loss_type]
+            # Sort: successful first (by accuracy), then failed
+            loss_results = sorted(loss_results, key=lambda x: (not x.failed, x.best_accuracy if x.best_accuracy else 0), reverse=True)
             
             f.write(f"### {loss_results[0].get_loss_description()}\n\n")
             
             for r in loss_results:
                 if r.plot_file and os.path.exists(r.plot_file):
-                    f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs\n\n")
-                    f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
+                    # Add status indicator
+                    status = "❌ FAILED" if r.failed else "✅ Success"
+                    f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs ({status})\n\n")
+                    if r.best_accuracy:
+                        f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
+                    else:
+                        f.write(f"**Final Test Accuracy**: {r.final_accuracy:.2f}%\n\n")
                     f.write(f"![{r.experiment_name}]({r.plot_file})\n\n")
                     f.write(f"*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*\n\n")
                 else:
-                    f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs\n\n")
-                    f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
+                    status = "❌ FAILED" if r.failed else "✅ Success"
+                    f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs ({status})\n\n")
+                    if r.best_accuracy:
+                        f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
+                    else:
+                        f.write(f"**Final Test Accuracy**: {r.final_accuracy:.2f}%\n\n")
                     f.write(f"*Plot file not found: {r.experiment_name}.png*\n\n")
         
         f.write("---\n\n")
@@ -519,17 +530,24 @@ def generate_html_report(results, output_file):
         # Training curves with embedded plots
         f.write("<h2>📊 Training Curves</h2>\n")
         f.write("<p><strong>Note:</strong> Each plot shows both <strong>Loss</strong> (left panel) and <strong>Accuracy</strong> (right panel) curves with train/test comparison.</p>\n")
+        f.write("<p><em>Including all experiments (successful and failed) to show training dynamics.</em></p>\n")
         
-        for loss_type in sorted(set(r.loss_type for r in successful)):
-            loss_results = [r for r in successful if r.loss_type == loss_type]
-            loss_results = sorted(loss_results, key=lambda x: x.best_accuracy, reverse=True)
+        for loss_type in sorted(set(r.loss_type for r in results)):
+            loss_results = [r for r in results if r.loss_type == loss_type]
+            # Sort: successful first (by accuracy), then failed
+            loss_results = sorted(loss_results, key=lambda x: (not x.failed, x.best_accuracy if x.best_accuracy else 0), reverse=True)
             
             f.write(f"<h3>{loss_results[0].get_loss_description()}</h3>\n")
             
             for r in loss_results:
                 if r.plot_file and os.path.exists(r.plot_file):
                     f.write(f"<div class='plot-container'>\n")
-                    f.write(f"<h4>{r.get_hyperparameters_str()} - {r.epochs} epochs (Best: {r.best_accuracy:.2f}%)</h4>\n")
+                    
+                    # Add status indicator
+                    status_badge = "<span class='failed'>❌ FAILED</span>" if r.failed else "<span class='success'>✅ Success</span>"
+                    accuracy_str = f"Best: {r.best_accuracy:.2f}%" if r.best_accuracy else f"Final: {r.final_accuracy:.2f}%"
+                    
+                    f.write(f"<h4>{r.get_hyperparameters_str()} - {r.epochs} epochs ({accuracy_str}) {status_badge}</h4>\n")
                     
                     # Embed image as base64 for portable HTML
                     try:
