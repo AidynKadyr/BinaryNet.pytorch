@@ -33,6 +33,13 @@ class ExperimentResult:
     def __init__(self, filepath):
         self.filepath = filepath
         self.filename = os.path.basename(filepath)
+        # Detect dataset from filename
+        if self.filename.startswith('cifar10_'):
+            self.dataset = 'cifar10'
+        elif self.filename.startswith('mnist_'):
+            self.dataset = 'mnist'
+        else:
+            self.dataset = 'unknown'
         self.parse_results()
     
     def parse_results(self):

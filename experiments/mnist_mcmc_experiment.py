@@ -364,11 +364,8 @@ def train(model, device, train_loader, optimizer, criterion, epoch, args, beta_s
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         
-        # Different output formats for different losses
-        if isinstance(criterion, VlogLoss) or isinstance(criterion, HingeLoss):
-            output = model(data, return_logits=True)  # Need raw logits
-        else:
-            output = model(data, return_logits=False)  # CrossEntropy uses log_softmax
+        # Always use raw logits (CE loss expects them, Vlog/Hinge also use them)
+        output = model(data, return_logits=True)
         
         # HingeLoss requires one-hot encoding with {-1, +1}
         if isinstance(criterion, HingeLoss):
@@ -415,11 +412,8 @@ def test(model, device, test_loader, criterion, args):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             
-            # Different output formats for different losses
-            if isinstance(criterion, VlogLoss) or isinstance(criterion, HingeLoss):
-                output = model(data, return_logits=True)  # Need raw logits
-            else:
-                output = model(data, return_logits=False)  # CrossEntropy uses log_softmax
+            # Always use raw logits (CE loss expects them, Vlog/Hinge also use them)
+            output = model(data, return_logits=True)
             
             # HingeLoss requires one-hot encoding with {-1, +1}
             if isinstance(criterion, HingeLoss):

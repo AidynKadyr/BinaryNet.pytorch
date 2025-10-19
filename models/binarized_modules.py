@@ -108,10 +108,18 @@ class BinarizeLinear(nn.Linear):
             input_b=binarized(input)
         else:
             input_b = input  # Don't binarize first layer input
-        weight_b=binarized(self.weight)
+        
+        # Create shadow copy for weights (once)
+        if not hasattr(self.weight, 'org'):
+            self.weight.org = self.weight.data.clone()
+        
+        # Binarize from the shadow copy
+        weight_b=binarized(self.weight.org)
         out = nn.functional.linear(input_b,weight_b)
+        
         if not self.bias is None:
-            self.bias.org=self.bias.data.clone()
+            if not hasattr(self.bias, 'org'):
+                self.bias.org=self.bias.data.clone()
             out += self.bias.view(1, -1).expand_as(out)
 
         return out
@@ -127,13 +135,20 @@ class BinarizeConv2d(nn.Conv2d):
             input_b = binarized(input)
         else:
             input_b=input
-        weight_b=binarized(self.weight)
+        
+        # Create shadow copy for weights (once)
+        if not hasattr(self.weight, 'org'):
+            self.weight.org = self.weight.data.clone()
+        
+        # Binarize from the shadow copy
+        weight_b=binarized(self.weight.org)
 
         out = nn.functional.conv2d(input_b, weight_b, None, self.stride,
                                    self.padding, self.dilation, self.groups)
 
         if not self.bias is None:
-            self.bias.org=self.bias.data.clone()
+            if not hasattr(self.bias, 'org'):
+                self.bias.org=self.bias.data.clone()
             out += self.bias.view(1, -1, 1, 1).expand_as(out)
 
         return out
