@@ -1,0 +1,32 @@
+Experiment: cifar10_ce_e10_bs512_lr0.005
+============================================================
+
+CONFIGURATION:
+Dataset: CIFAR-10
+Model: VGG BinaryNet
+Loss Type: ce
+Epochs: 10
+Batch Size: 512
+Learning Rate: 0.005
+
+TRAINING TIME:
+Total Time: 1077.5s (17.96 min)
+Time per Epoch: 107.8s
+
+RESULTS:
+Final Test Accuracy: 57.29%
+Best Test Accuracy: 57.29% (Epoch 10)
+
+PER-EPOCH RESULTS:
+Epoch    Train Loss      Test Loss       Train Acc    Test Acc    
+----------------------------------------------------------------------
+1        1.757803        1.562285        37.65       % 44.91       %
+2        1.577387        1.478902        45.13       % 49.51       %
+3        1.505639        1.418588        48.13       % 50.96       %
+4        1.463900        1.372645        49.72       % 52.53       %
+5        1.424868        1.338757        51.35       % 54.80       %
+6        1.400170        1.310127        52.49       % 55.98       %
+7        1.377827        1.299657        53.02       % 55.49       %
+8        1.358944        1.298226        54.00       % 56.28       %
+9        1.338632        1.285936        54.83       % 56.51       %
+10       1.328563        1.272088        55.36       % 57.29       %

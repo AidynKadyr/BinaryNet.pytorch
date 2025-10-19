@@ -1,0 +1,33 @@
+Experiment: mnist_vlog_b_annealing_b1.0-10.0_beta1.0_e10_bs512_lr0.01
+============================================================
+
+CONFIGURATION:
+Loss Type: vlog_b_annealing
+Epochs: 10
+Batch Size: 512
+Learning Rate: 0.01
+Num Workers: 4
+b-annealing: 1.0 -> 10.0 (exponential)
+Fixed beta: 1.0
+
+TRAINING TIME:
+Total Time: 140.5s (2.34 min)
+Time per Epoch: 14.0s
+
+RESULTS:
+Final Test Accuracy: 94.64%
+Best Test Accuracy: 94.82% (Epoch 7)
+
+PER-EPOCH RESULTS:
+Epoch    Train Loss      Test Loss       Train Acc    Test Acc    
+----------------------------------------------------------------------
+1        -5.658978       -7.032607       87.53       % 92.49       %
+2        -8.032838       -8.699700       92.23       % 93.47       %
+3        -9.109065       -10.060223      92.91       % 93.66       %
+4        -8.260915       -9.945395       93.19       % 93.23       %
+5        -5.891439       -7.352313       93.45       % 93.83       %
+6        -3.912706       -4.296891       93.86       % 94.22       %
+7        -2.306209       -2.270054       93.86       % 94.82       %
+8        -1.054242       -0.336761       93.86       % 94.63       %
+9        0.211831        1.230660        93.88       % 94.64       %
+10       2.764725        3.900331        92.77       % 94.64       %

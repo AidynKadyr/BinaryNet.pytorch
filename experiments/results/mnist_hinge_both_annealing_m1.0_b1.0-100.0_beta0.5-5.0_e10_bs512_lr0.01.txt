@@ -1,0 +1,34 @@
+Experiment: mnist_hinge_both_annealing_m1.0_b1.0-100.0_beta0.5-5.0_e10_bs512_lr0.01
+============================================================
+
+CONFIGURATION:
+Loss Type: hinge_both_annealing
+Epochs: 10
+Batch Size: 512
+Learning Rate: 0.01
+Num Workers: 4
+Hinge Margin: 1.0
+b-annealing: 1.0 -> 100.0 (exponential)
+Beta-annealing: 0.5 -> 5.0 (linear)
+
+TRAINING TIME:
+Total Time: 137.5s (2.29 min)
+Time per Epoch: 13.7s
+
+RESULTS:
+Final Test Accuracy: 9.80%
+Best Test Accuracy: 92.18% (Epoch 2)
+
+PER-EPOCH RESULTS:
+Epoch    Train Loss      Test Loss       Train Acc    Test Acc    
+----------------------------------------------------------------------
+1        0.071746        0.078523        86.22       % 92.11       %
+2        0.419423        0.424560        87.11       % 92.18       %
+3        7.832097        4.396325        84.59       % 91.46       %
+4        687.264778      241.342073      78.28       % 89.26       %
+5        6032379.897908  888675.443750   66.00       % 80.74       %
+6        351458278921649.875000 18156318831411.199219 51.70       % 68.72       %
+7        85653444588114829901824.000000 19313727027720061190144.000000 53.04       % 70.16       %
+8        nan             nan             10.22       % 9.80        %
+9        nan             nan             9.87        % 9.80        %
+10       nan             nan             9.87        % 9.80        %
