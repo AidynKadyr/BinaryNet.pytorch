@@ -124,6 +124,8 @@ class ExperimentResult:
             'hinge_both_annealing': 'Hinge + Both Annealing',
             'vlog_fixed': 'Vlog (Fixed)',
             'vlog_annealing': 'Vlog + β-Annealing',
+            'vlog_b_annealing': 'Vlog + b-Annealing',
+            'vlog_both_annealing': 'Vlog + Both Annealing',
         }
         return descriptions.get(self.loss_type, self.loss_type)
     

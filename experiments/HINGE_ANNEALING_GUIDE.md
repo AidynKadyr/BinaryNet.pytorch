@@ -23,6 +23,8 @@ We've implemented **THREE** annealing strategies for HingeLoss:
 | **Hinge + BOTH** | Combined annealing | ✅ b + β | `--loss-type hinge_both_annealing` |
 | **Vlog Fixed** | MCMC potential | ❌ None | `--loss-type vlog_fixed` |
 | **Vlog + β-Annealing** | MCMC + temperature | ✅ β: 0.5→5 | `--loss-type vlog_annealing` |
+| **Vlog + b-Annealing** | MCMC + sharpness | ✅ b: 1→100 | `--loss-type vlog_b_annealing` |
+| **Vlog + BOTH** | MCMC + combined | ✅ b + β | `--loss-type vlog_both_annealing` |
 
 ---
 
