@@ -2,7 +2,7 @@
 
 **Auto-generated summary of all Binary Neural Network experiments**
 
-Total experiments analyzed: **19**
+Total experiments analyzed: **23**
 
 ---
 
@@ -10,16 +10,16 @@ Total experiments analyzed: **19**
 
 | Rank | Loss Function | Hyperparameters | Best Acc | Epochs | Time/Epoch |
 |------|---------------|-----------------|----------|--------|------------|
-| 🥇 | Vlog + β-Annealing | b=5.0, β: 0.5 -> 5.0 | **97.59%** | 20 | 15.9s |
-| 🥈 | Vlog (Fixed) | b=2.0, β=1.0 | **97.57%** | 10 | 15.8s |
-| 🥉 | Vlog + β-Annealing | b=5.0, β: 0.5 -> 100.0 | **97.28%** | 20 | 15.7s |
-| 4. | Vlog (Fixed) | b=1.0, β=1.0 | **97.24%** | 10 | 15.7s |
-| 5. | Hinge + β-Annealing | margin=1.0, β: 0.5 -> 5.0 | **97.05%** | 20 | 16.5s |
-| 6. | Hinge Loss | margin=1.0 | **96.86%** | 20 | 16.2s |
-| 7. | Vlog + β-Annealing | b=5.0, β: 0.5 -> 100.0 | **96.74%** | 10 | 15.9s |
-| 8. | Vlog + β-Annealing | b=5.0, β: 0.5 -> 5.0 | **96.70%** | 10 | 15.4s |
-| 9. | Cross-Entropy | — | **96.19%** | 10 | 13.8s |
-| 10. | Vlog (Fixed) | b=5.0, β=1.0 | **96.06%** | 10 | 16.1s |
+| 🥇 | Vlog + b-Annealing | β=1.0, b: 1.0 -> 10.0 | **98.00%** | 20 | 14.7s |
+| 🥈 | Vlog + β-Annealing | b=5.0, β: 0.5 -> 5.0 | **97.59%** | 20 | 15.9s |
+| 🥉 | Vlog (Fixed) | b=2.0, β=1.0 | **97.57%** | 10 | 15.8s |
+| 4. | Vlog + β-Annealing | b=5.0, β: 0.5 -> 100.0 | **97.28%** | 20 | 15.7s |
+| 5. | Vlog (Fixed) | b=1.0, β=1.0 | **97.24%** | 10 | 15.7s |
+| 6. | Vlog + b-Annealing | β=1.0, b: 1.0 -> 100.0 | **97.17%** | 10 | 15.1s |
+| 7. | Vlog + b-Annealing | β=1.0, b: 1.0 -> 100.0 | **97.10%** | 20 | 15.2s |
+| 8. | Hinge + β-Annealing | margin=1.0, β: 0.5 -> 5.0 | **97.05%** | 20 | 16.5s |
+| 9. | Hinge Loss | margin=1.0 | **96.86%** | 20 | 16.2s |
+| 10. | Vlog + β-Annealing | b=5.0, β: 0.5 -> 100.0 | **96.74%** | 10 | 15.9s |
 
 ---
 
@@ -94,6 +94,20 @@ Total experiments analyzed: **19**
 | b=5.0, β: 0.5 -> 5.0 | 97.59% | 96.75% | 318.2s (5.30 min) | ✅ Success |
 | b=5.0, β: 0.5 -> 100.0 | 97.28% | 96.97% | 314.7s (5.25 min) | ✅ Success |
 
+### VLOG B ANNEALING - 10 Epochs
+
+| Configuration | Best Test Acc | Final Test Acc | Training Time | Status |
+|---------------|---------------|----------------|---------------|--------|
+| β=1.0, b: 1.0 -> 100.0 | 97.17% | 96.97% | 150.7s (2.51 min) | ✅ Success |
+| β=1.0, b: 1.0 -> 100.0 | 95.15% | 93.66% | 154.1s (2.57 min) | ✅ Success |
+
+### VLOG B ANNEALING - 20 Epochs
+
+| Configuration | Best Test Acc | Final Test Acc | Training Time | Status |
+|---------------|---------------|----------------|---------------|--------|
+| β=1.0, b: 1.0 -> 10.0 | 98.00% | 97.69% | 294.3s (4.91 min) | ✅ Success |
+| β=1.0, b: 1.0 -> 100.0 | 97.10% | 96.16% | 304.0s (5.07 min) | ✅ Success |
+
 ### VLOG FIXED - 10 Epochs
 
 | Configuration | Best Test Acc | Final Test Acc | Training Time | Status |
@@ -109,16 +123,17 @@ Total experiments analyzed: **19**
 ## 💡 Key Insights
 
 ### Best Overall Performance
-- **Loss Function**: Vlog + β-Annealing
-- **Hyperparameters**: b=5.0, β: 0.5 -> 5.0
-- **Best Test Accuracy**: 97.59% (Epoch 18)
-- **Training Time**: 318.2s (5.30 min)
-- **Time per Epoch**: 15.9s
+- **Loss Function**: Vlog + b-Annealing
+- **Hyperparameters**: β=1.0, b: 1.0 -> 10.0
+- **Best Test Accuracy**: 98.00% (Epoch 17)
+- **Training Time**: 294.3s (4.91 min)
+- **Time per Epoch**: 14.7s
 
 ### Performance by Loss Type (Best for Each)
 
 | Loss Type | Best Accuracy | Configuration |
 |-----------|---------------|---------------|
+| Vlog + b-Annealing | **98.00%** | β=1.0, b: 1.0 -> 10.0 |
 | Vlog + β-Annealing | **97.59%** | b=5.0, β: 0.5 -> 5.0 |
 | Vlog (Fixed) | **97.57%** | b=2.0, β=1.0 |
 | Hinge + β-Annealing | **97.05%** | margin=1.0, β: 0.5 -> 5.0 |
@@ -265,6 +280,40 @@ Below are the training curves for **all experiments** (successful and failed).
 **Best Test Accuracy**: 96.70%
 
 ![mnist_vlog_annealing_b5.0_beta0.5-5.0_e10_bs4096_lr0.01](../plots/mnist_vlog_annealing_b5.0_beta0.5-5.0_e10_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
+### Vlog + b-Annealing
+
+#### β=1.0, b: 1.0 -> 10.0 - 20 epochs (✅ Success)
+
+**Best Test Accuracy**: 98.00%
+
+![mnist_vlog_b_annealing_b1.0-10.0_beta1.0_e20_bs512_lr0.01](../plots/mnist_vlog_b_annealing_b1.0-10.0_beta1.0_e20_bs512_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
+#### β=1.0, b: 1.0 -> 100.0 - 10 epochs (✅ Success)
+
+**Best Test Accuracy**: 97.17%
+
+![mnist_vlog_b_annealing_b1.0-100.0_beta1.0_e10_bs512_lr0.01](../plots/mnist_vlog_b_annealing_b1.0-100.0_beta1.0_e10_bs512_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
+#### β=1.0, b: 1.0 -> 100.0 - 20 epochs (✅ Success)
+
+**Best Test Accuracy**: 97.10%
+
+![mnist_vlog_b_annealing_b1.0-100.0_beta1.0_e20_bs4096_lr0.01](../plots/mnist_vlog_b_annealing_b1.0-100.0_beta1.0_e20_bs4096_lr0.01.png)
+
+*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
+
+#### β=1.0, b: 1.0 -> 100.0 - 10 epochs (✅ Success)
+
+**Best Test Accuracy**: 95.15%
+
+![mnist_vlog_b_annealing_b1.0-100.0_beta1.0_e10_bs4096_lr0.01](../plots/mnist_vlog_b_annealing_b1.0-100.0_beta1.0_e10_bs4096_lr0.01.png)
 
 *Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*
 
