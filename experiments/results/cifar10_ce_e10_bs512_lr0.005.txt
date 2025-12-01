@@ -10,8 +10,8 @@ Batch Size: 512
 Learning Rate: 0.005
 
 TRAINING TIME:
-Total Time: 1077.5s (17.96 min)
-Time per Epoch: 107.8s
+Total Time: 975.9s (16.26 min)
+Time per Epoch: 97.6s
 
 RESULTS:
 Final Test Accuracy: 57.29%
