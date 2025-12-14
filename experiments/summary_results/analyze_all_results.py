@@ -4,9 +4,10 @@ Comprehensive Analysis Script for Binary Neural Network Experiments
 This script:
 1. Parses all result files in experiments/results/
 2. Extracts key metrics (accuracy, training time, hyperparameters)
-3. Generates comparison tables
+3. Generates comparison tables ORGANIZED BY DATASET (MNIST vs CIFAR-10)
 4. Creates an HTML report with embedded plots
-5. Provides ranking and insights
+5. Provides ranking and insights per dataset
+6. Enables cross-dataset comparison for similar experiment configurations
 
 Usage (from summary_results folder):
     python analyze_all_results.py
@@ -195,180 +196,154 @@ def generate_summary_table(results):
     return sorted_groups, groups
 
 
-def generate_markdown_report(results, output_file):
-    """Generate markdown report with tables and plot references"""
+def group_by_dataset(results):
+    """Group results by dataset"""
+    datasets = defaultdict(list)
+    for r in results:
+        datasets[r.dataset].append(r)
+    return datasets
+
+
+def get_experiment_config_key(result):
+    """Get a normalized configuration key for cross-dataset comparison"""
+    # Create a key based on loss type and key hyperparameters (ignoring dataset-specific epochs/lr)
+    key_parts = [result.loss_type]
     
-    sorted_groups, groups = generate_summary_table(results)
+    if result.hinge_margin:
+        key_parts.append(f"m{result.hinge_margin}")
+    if result.b_value:
+        key_parts.append(f"b{result.b_value}")
+    if result.beta_fixed:
+        key_parts.append(f"beta{result.beta_fixed}")
+    if result.b_annealing:
+        key_parts.append(f"b_ann:{result.b_annealing}")
+    if result.beta_annealing:
+        key_parts.append(f"beta_ann:{result.beta_annealing}")
+    
+    return "_".join(key_parts)
+
+
+def find_cross_dataset_comparisons(results):
+    """Find experiments with similar configurations across datasets"""
+    # Group by config key
+    config_groups = defaultdict(lambda: defaultdict(list))
+    
+    for r in results:
+        if r.failed:
+            continue
+        config_key = get_experiment_config_key(r)
+        config_groups[config_key][r.dataset].append(r)
+    
+    # Filter to only configs that appear in multiple datasets
+    cross_dataset = {}
+    for config_key, dataset_results in config_groups.items():
+        if len(dataset_results) > 1:  # Present in multiple datasets
+            cross_dataset[config_key] = dataset_results
+    
+    return cross_dataset
+
+
+def generate_markdown_report(results, output_file):
+    """Generate markdown report with simple tables of all experiments grouped by dataset"""
+    
+    # Group by dataset
+    datasets = group_by_dataset(results)
+    dataset_names = {'mnist': 'MNIST', 'cifar10': 'CIFAR-10', 'unknown': 'Unknown'}
     
     with open(output_file, 'w', encoding='utf-8') as f:
-        f.write("# 📊 Experimental Results Analysis\n\n")
-        f.write("**Auto-generated summary of all Binary Neural Network experiments**\n\n")
-        f.write(f"Total experiments analyzed: **{len(results)}**\n\n")
-        f.write("---\n\n")
+        f.write("# Binary Neural Network - Experimental Results\n\n")
+        f.write(f"**Total experiments: {len(results)}**\n\n")
         
-        # Executive Summary - Top Performers
-        f.write("## 🏆 Top Performers\n\n")
-        
-        # Sort all non-failed results by best accuracy
-        successful = [r for r in results if not r.failed and r.best_accuracy is not None]
-        top_10 = sorted(successful, key=lambda x: x.best_accuracy, reverse=True)[:10]
-        
-        f.write("| Rank | Loss Function | Hyperparameters | Best Acc | Epochs | Time/Epoch |\n")
-        f.write("|------|---------------|-----------------|----------|--------|------------|\n")
-        
-        for i, r in enumerate(top_10, 1):
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-            f.write(f"| {medal} | {r.get_loss_description()} | {r.get_hyperparameters_str()} | "
-                   f"**{r.best_accuracy:.2f}%** | {r.epochs} | {r.time_per_epoch:.1f}s |\n")
-        
+        # Table of Contents
+        f.write("## Table of Contents\n\n")
+        for dataset in sorted(datasets.keys()):
+            ds_name = dataset_names.get(dataset, dataset)
+            f.write(f"- [{ds_name}](#{dataset.lower()})\n")
+        f.write("- [Training Curves](#training-curves)\n")
         f.write("\n---\n\n")
         
-        # Detailed Results by Loss Type and Epochs
-        f.write("## 📈 Detailed Results by Configuration\n\n")
-        
-        for (loss_type, epochs), group_results in sorted_groups:
-            f.write(f"### {loss_type.upper().replace('_', ' ')} - {epochs} Epochs\n\n")
+        # ============== DATASET TABLES ==============
+        for dataset in sorted(datasets.keys()):
+            ds_name = dataset_names.get(dataset, dataset)
+            dataset_results = datasets[dataset]
             
-            # Sort by best accuracy within group
-            group_results = sorted(group_results, key=lambda x: x.best_accuracy if x.best_accuracy else 0, reverse=True)
+            # Sort by filename
+            dataset_results = sorted(dataset_results, key=lambda x: x.filename)
             
-            f.write("| Configuration | Best Test Acc | Final Test Acc | Training Time | Status |\n")
-            f.write("|---------------|---------------|----------------|---------------|--------|\n")
+            successful = len([r for r in dataset_results if not r.failed])
+            failed = len([r for r in dataset_results if r.failed])
             
-            for r in group_results:
-                status = "❌ Failed" if r.failed else "✅ Success"
-                best_acc = f"{r.best_accuracy:.2f}%" if r.best_accuracy else "N/A"
+            f.write(f"# {ds_name}\n\n")
+            f.write(f"**{len(dataset_results)} experiments** ({successful} successful, {failed} failed)\n\n")
+            
+            # Single table with all experiments (filename first)
+            f.write("| Filename | Loss | Best Acc | Final Acc | Epochs | BS | LR | Time | Status |\n")
+            f.write("|----------|------|----------|-----------|--------|----|----|------|--------|\n")
+            
+            for r in dataset_results:
+                status = "❌" if r.failed else "✅"
+                best_acc = f"**{r.best_accuracy:.2f}%**" if r.best_accuracy else "N/A"
                 final_acc = f"{r.final_accuracy:.2f}%" if r.final_accuracy else "N/A"
-                time_str = f"{r.total_time_sec:.1f}s ({r.total_time_sec/60:.2f} min)" if r.total_time_sec else "N/A"
+                time_str = f"{r.total_time_sec/60:.1f}min" if r.total_time_sec else "N/A"
+                lr_str = f"{r.lr}" if r.lr else "N/A"
+                bs_str = f"{r.batch_size}" if r.batch_size else "N/A"
+                # Remove .txt extension for cleaner display
+                filename = r.filename.replace('.txt', '')
+                # Get base loss type (ce, hinge, vlog)
+                loss_type = r.loss_type.split('_')[0] if r.loss_type else "N/A"
                 
-                f.write(f"| {r.get_hyperparameters_str()} | {best_acc} | {final_acc} | {time_str} | {status} |\n")
+                f.write(f"| `{filename}` | {loss_type} | {best_acc} | {final_acc} | {r.epochs} | {bs_str} | {lr_str} | {time_str} | {status} |\n")
+            
+            f.write("\n---\n\n")
+        
+        # ============== TRAINING CURVES ==============
+        f.write("# Training Curves\n\n")
+        
+        for dataset in sorted(datasets.keys()):
+            ds_name = dataset_names.get(dataset, dataset)
+            dataset_results = datasets[dataset]
+            # Sort by filename
+            dataset_results = sorted(dataset_results, key=lambda x: x.filename)
+            
+            f.write(f"## {ds_name}\n\n")
+            
+            for r in dataset_results:
+                if r.plot_file and os.path.exists(r.plot_file):
+                    status = "❌" if r.failed else "✅"
+                    acc_str = f"{r.best_accuracy:.2f}%" if r.best_accuracy else f"{r.final_accuracy:.2f}%"
+                    filename = r.filename.replace('.txt', '')
+                    f.write(f"### `{filename}` | {acc_str} {status}\n\n")
+                    f.write(f"![{r.experiment_name}]({r.plot_file})\n\n")
             
             f.write("\n")
         
         f.write("---\n\n")
-        
-        # Key Insights Section
-        f.write("## 💡 Key Insights\n\n")
-        
-        # Find best overall
-        if successful:
-            best = max(successful, key=lambda x: x.best_accuracy)
-            f.write(f"### Best Overall Performance\n")
-            f.write(f"- **Loss Function**: {best.get_loss_description()}\n")
-            f.write(f"- **Hyperparameters**: {best.get_hyperparameters_str()}\n")
-            f.write(f"- **Best Test Accuracy**: {best.best_accuracy:.2f}% (Epoch {best.best_epoch})\n")
-            f.write(f"- **Training Time**: {best.total_time_sec:.1f}s ({best.total_time_sec/60:.2f} min)\n")
-            f.write(f"- **Time per Epoch**: {best.time_per_epoch:.1f}s\n\n")
-        
-        # Compare loss types
-        f.write("### Performance by Loss Type (Best for Each)\n\n")
-        loss_type_best = {}
-        for r in successful:
-            if r.loss_type not in loss_type_best or r.best_accuracy > loss_type_best[r.loss_type].best_accuracy:
-                loss_type_best[r.loss_type] = r
-        
-        f.write("| Loss Type | Best Accuracy | Configuration |\n")
-        f.write("|-----------|---------------|---------------|\n")
-        
-        for loss_type, r in sorted(loss_type_best.items(), key=lambda x: x[1].best_accuracy, reverse=True):
-            f.write(f"| {r.get_loss_description()} | **{r.best_accuracy:.2f}%** | {r.get_hyperparameters_str()} |\n")
-        
-        f.write("\n")
-        
-        # Failed experiments
-        failed = [r for r in results if r.failed]
-        if failed:
-            f.write("### ⚠️ Failed Experiments\n\n")
-            f.write("The following configurations resulted in training failures (typically loss explosion):\n\n")
-            
-            for r in failed:
-                f.write(f"- **{r.get_loss_description()}**: {r.get_hyperparameters_str()} "
-                       f"(Final acc: {r.final_accuracy:.2f}%)\n")
-            
-            f.write("\n**Common pattern**: b-annealing (τ-annealing) without proper gradient clipping causes loss explosion.\n\n")
-        
-        f.write("---\n\n")
-        
-        # Plots Section
-        f.write("## 📊 Training Curves\n\n")
-        f.write("Below are the training curves for **all experiments** (successful and failed).\n\n")
-        f.write("**Note**: Each plot shows both **Loss** (left) and **Accuracy** (right) curves with train/test comparison.\n\n")
-        
-        # Group ALL experiments by loss type for plotting
-        for loss_type in sorted(set(r.loss_type for r in results)):
-            loss_results = [r for r in results if r.loss_type == loss_type]
-            # Sort: successful first (by accuracy), then failed
-            loss_results = sorted(loss_results, key=lambda x: (not x.failed, x.best_accuracy if x.best_accuracy else 0), reverse=True)
-            
-            f.write(f"### {loss_results[0].get_loss_description()}\n\n")
-            
-            for r in loss_results:
-                if r.plot_file and os.path.exists(r.plot_file):
-                    # Add status indicator
-                    status = "❌ FAILED" if r.failed else "✅ Success"
-                    f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs ({status})\n\n")
-                    if r.best_accuracy:
-                        f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
-                    else:
-                        f.write(f"**Final Test Accuracy**: {r.final_accuracy:.2f}%\n\n")
-                    f.write(f"![{r.experiment_name}]({r.plot_file})\n\n")
-                    f.write(f"*Training curves showing: Left = Loss (train/test), Right = Accuracy (train/test)*\n\n")
-                else:
-                    status = "❌ FAILED" if r.failed else "✅ Success"
-                    f.write(f"#### {r.get_hyperparameters_str()} - {r.epochs} epochs ({status})\n\n")
-                    if r.best_accuracy:
-                        f.write(f"**Best Test Accuracy**: {r.best_accuracy:.2f}%\n\n")
-                    else:
-                        f.write(f"**Final Test Accuracy**: {r.final_accuracy:.2f}%\n\n")
-                    f.write(f"*Plot file not found: {r.experiment_name}.png*\n\n")
-        
-        f.write("---\n\n")
-        
-        # Recommendations
-        f.write("## 🎯 Recommendations\n\n")
-        f.write("Based on the experimental results:\n\n")
-        
-        f.write("### ✅ What Works Well\n\n")
-        f.write("1. **Vlog Loss with low b values** (b=1.0 to 5.0): Consistently high performance\n")
-        f.write("2. **β-Annealing** (temperature annealing): Improves convergence for both Hinge and Vlog\n")
-        f.write("3. **Batch size 4096**: Good balance between speed and stability\n\n")
-        
-        f.write("### ❌ What to Avoid\n\n")
-        f.write("1. **b-Annealing alone** (1.0 → 100.0): Causes catastrophic loss explosion\n")
-        f.write("2. **High b values** (b=20.0): Unstable training and poor convergence\n")
-        f.write("3. **Combining b and β annealing**: Compounds instability issues\n\n")
-        
-        f.write("### 🚀 Suggested Next Steps\n\n")
-        f.write("1. **Focus on Vlog + β-annealing**: Most promising approach\n")
-        f.write("2. **Test intermediate β ranges**: Try β: 0.5 → 10.0 or 1.0 → 20.0\n")
-        f.write("3. **Longer training**: Run best configs for 50-100 epochs\n")
-        f.write("4. **Add gradient clipping**: May enable stable b-annealing\n\n")
-        
-        f.write("---\n\n")
-        f.write("*Report generated automatically by `analyze_all_results.py`*\n")
+        f.write("*Generated by `analyze_all_results.py`*\n")
     
     print(f"✅ Markdown report saved to: {output_file}")
     return output_file
 
 
 def generate_html_report(results, output_file):
-    """Generate HTML report with embedded plots"""
+    """Generate HTML report with simple tables of all experiments grouped by dataset"""
     
-    sorted_groups, groups = generate_summary_table(results)
+    # Group by dataset
+    datasets = group_by_dataset(results)
+    dataset_names = {'mnist': 'MNIST', 'cifar10': 'CIFAR-10', 'unknown': 'Unknown'}
+    dataset_colors = {'mnist': '#9b59b6', 'cifar10': '#e67e22', 'unknown': '#95a5a6'}
     
     with open(output_file, 'w', encoding='utf-8') as f:
-        # HTML header
         f.write("""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binary Neural Network - Experimental Results</title>
+    <title>BNN Experimental Results</title>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             padding: 20px;
             background: #f5f5f5;
@@ -380,30 +355,54 @@ def generate_html_report(results, output_file):
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-        h2 { color: #34495e; margin-top: 30px; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; }
-        h3 { color: #7f8c8d; margin-top: 20px; }
+        h2 { color: #34495e; margin-top: 30px; }
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .nav-tab {
+            padding: 10px 20px;
+            background: #ecf0f1;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #2c3e50;
+        }
+        .nav-tab:hover { background: #3498db; color: white; }
+        .dataset-section {
+            margin: 30px 0;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid;
+        }
+        .dataset-mnist { background: #f5eef8; border-color: #9b59b6; }
+        .dataset-cifar10 { background: #fef5e7; border-color: #e67e22; }
         table {
             width: 100%;
             border-collapse: collapse;
             margin: 20px 0;
             background: white;
+            font-size: 0.9em;
         }
         th {
             background: #3498db;
             color: white;
-            padding: 12px;
+            padding: 10px 8px;
             text-align: left;
             font-weight: 600;
         }
+        th.mnist-header { background: #9b59b6; }
+        th.cifar-header { background: #e67e22; }
         td {
-            padding: 10px 12px;
+            padding: 8px;
             border-bottom: 1px solid #ecf0f1;
         }
         tr:hover { background: #f8f9fa; }
-        .success { color: #27ae60; font-weight: bold; }
-        .failed { color: #e74c3c; font-weight: bold; }
+        .success { color: #27ae60; }
+        .failed { color: #e74c3c; }
         .plot-container {
-            margin: 30px 0;
+            margin: 20px 0;
             text-align: center;
         }
         .plot-container img {
@@ -411,169 +410,114 @@ def generate_html_report(results, output_file):
             height: auto;
             border: 1px solid #ddd;
             border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        .metric-card {
-            display: inline-block;
-            background: #ecf0f1;
-            padding: 15px 25px;
-            margin: 10px;
+        .comparison-box {
+            background: #e3f2fd;
+            padding: 15px;
+            margin: 20px 0;
             border-radius: 8px;
-            text-align: center;
         }
-        .metric-value {
-            font-size: 2em;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        .metric-label {
-            color: #7f8c8d;
-            font-size: 0.9em;
-        }
-        .insight-box {
-            background: #e8f5e9;
-            border-left: 4px solid #27ae60;
-            padding: 15px;
-            margin: 20px 0;
-        }
-        .warning-box {
-            background: #ffebee;
-            border-left: 4px solid #e74c3c;
-            padding: 15px;
-            margin: 20px 0;
-        }
-        .medal { font-size: 1.5em; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📊 Binary Neural Network - Experimental Results Analysis</h1>
+        <h1>Binary Neural Network - Experimental Results</h1>
         <p><strong>Total Experiments:</strong> """ + str(len(results)) + """</p>
-        <hr>
+        
+        <div class="nav-tabs">
 """)
         
-        # Top performers section
-        f.write("<h2>🏆 Top 10 Performers</h2>\n")
-        f.write("<table>\n")
-        f.write("<tr><th>Rank</th><th>Loss Function</th><th>Hyperparameters</th><th>Best Accuracy</th><th>Epochs</th><th>Time/Epoch</th></tr>\n")
+        for dataset in sorted(datasets.keys()):
+            ds_name = dataset_names.get(dataset, dataset)
+            f.write(f"<a class='nav-tab' href='#{dataset}-section'>{ds_name}</a>\n")
+        f.write("<a class='nav-tab' href='#curves-section'>Curves</a>\n")
+        f.write("</div>\n<hr>\n")
         
-        successful = [r for r in results if not r.failed and r.best_accuracy is not None]
-        top_10 = sorted(successful, key=lambda x: x.best_accuracy, reverse=True)[:10]
-        
-        medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
-        
-        for i, r in enumerate(top_10):
-            f.write(f"<tr><td class='medal'>{medals[i]}</td>")
-            f.write(f"<td>{r.get_loss_description()}</td>")
-            f.write(f"<td>{r.get_hyperparameters_str()}</td>")
-            f.write(f"<td><strong>{r.best_accuracy:.2f}%</strong></td>")
-            f.write(f"<td>{r.epochs}</td>")
-            f.write(f"<td>{r.time_per_epoch:.1f}s</td></tr>\n")
-        
-        f.write("</table>\n")
-        
-        # Key metrics
-        if successful:
-            best = max(successful, key=lambda x: x.best_accuracy)
-            f.write("<h2>📈 Key Metrics</h2>\n")
-            f.write("<div style='text-align: center;'>\n")
-            f.write(f"<div class='metric-card'><div class='metric-value'>{best.best_accuracy:.2f}%</div><div class='metric-label'>Best Accuracy</div></div>\n")
-            f.write(f"<div class='metric-card'><div class='metric-value'>{len(successful)}</div><div class='metric-label'>Successful Runs</div></div>\n")
-            f.write(f"<div class='metric-card'><div class='metric-value'>{len([r for r in results if r.failed])}</div><div class='metric-label'>Failed Runs</div></div>\n")
-            avg_time = sum(r.time_per_epoch for r in successful if r.time_per_epoch) / len([r for r in successful if r.time_per_epoch])
-            f.write(f"<div class='metric-card'><div class='metric-value'>{avg_time:.1f}s</div><div class='metric-label'>Avg Time/Epoch</div></div>\n")
-            f.write("</div>\n")
-        
-        # Detailed results
-        f.write("<h2>📋 Detailed Results by Configuration</h2>\n")
-        
-        for (loss_type, epochs), group_results in sorted_groups:
-            f.write(f"<h3>{loss_type.upper().replace('_', ' ')} - {epochs} Epochs</h3>\n")
+        # ============== DATASET TABLES ==============
+        for dataset in sorted(datasets.keys()):
+            ds_name = dataset_names.get(dataset, dataset)
+            ds_color = dataset_colors.get(dataset, '#95a5a6')
+            dataset_results = datasets[dataset]
             
-            group_results = sorted(group_results, key=lambda x: x.best_accuracy if x.best_accuracy else 0, reverse=True)
+            # Sort by filename
+            dataset_results = sorted(dataset_results, key=lambda x: x.filename)
             
+            successful = len([r for r in dataset_results if not r.failed])
+            failed = len([r for r in dataset_results if r.failed])
+            
+            f.write(f"<div id='{dataset}-section' class='dataset-section dataset-{dataset}'>\n")
+            f.write(f"<h2 style='color: {ds_color}; margin-top: 0;'>{ds_name}</h2>\n")
+            f.write(f"<p><strong>{len(dataset_results)} experiments</strong> ({successful} successful, {failed} failed)</p>\n")
+            
+            # Single table with all experiments (filename first)
             f.write("<table>\n")
-            f.write("<tr><th>Configuration</th><th>Best Test Acc</th><th>Final Test Acc</th><th>Training Time</th><th>Status</th></tr>\n")
+            f.write("<tr><th>Filename</th><th>Loss</th><th>Best Acc</th><th>Final Acc</th><th>Epochs</th><th>BS</th><th>LR</th><th>Time</th><th>Status</th></tr>\n")
             
-            for r in group_results:
+            for r in dataset_results:
                 status_class = 'failed' if r.failed else 'success'
-                status_text = '❌ Failed' if r.failed else '✅ Success'
-                best_acc = f"{r.best_accuracy:.2f}%" if r.best_accuracy else "N/A"
+                status = "❌" if r.failed else "✅"
+                best_acc = f"<strong>{r.best_accuracy:.2f}%</strong>" if r.best_accuracy else "N/A"
                 final_acc = f"{r.final_accuracy:.2f}%" if r.final_accuracy else "N/A"
-                time_str = f"{r.total_time_sec:.1f}s" if r.total_time_sec else "N/A"
+                time_str = f"{r.total_time_sec/60:.1f}min" if r.total_time_sec else "N/A"
+                lr_str = f"{r.lr}" if r.lr else "N/A"
+                bs_str = f"{r.batch_size}" if r.batch_size else "N/A"
+                filename = r.filename.replace('.txt', '')
+                # Get base loss type (ce, hinge, vlog)
+                loss_type = r.loss_type.split('_')[0] if r.loss_type else "N/A"
                 
-                f.write(f"<tr><td>{r.get_hyperparameters_str()}</td>")
-                f.write(f"<td><strong>{best_acc}</strong></td>")
+                f.write(f"<tr>")
+                f.write(f"<td><code>{filename}</code></td>")
+                f.write(f"<td>{loss_type}</td>")
+                f.write(f"<td>{best_acc}</td>")
                 f.write(f"<td>{final_acc}</td>")
+                f.write(f"<td>{r.epochs}</td>")
+                f.write(f"<td>{bs_str}</td>")
+                f.write(f"<td>{lr_str}</td>")
                 f.write(f"<td>{time_str}</td>")
-                f.write(f"<td class='{status_class}'>{status_text}</td></tr>\n")
+                f.write(f"<td class='{status_class}'>{status}</td>")
+                f.write(f"</tr>\n")
             
             f.write("</table>\n")
-        
-        # Key insights
-        f.write("<h2>💡 Key Insights</h2>\n")
-        
-        if successful:
-            best = max(successful, key=lambda x: x.best_accuracy)
-            f.write(f"<div class='insight-box'>\n")
-            f.write(f"<h3>Best Overall Performance</h3>\n")
-            f.write(f"<p><strong>Loss Function:</strong> {best.get_loss_description()}<br>\n")
-            f.write(f"<strong>Hyperparameters:</strong> {best.get_hyperparameters_str()}<br>\n")
-            f.write(f"<strong>Best Test Accuracy:</strong> {best.best_accuracy:.2f}% (Epoch {best.best_epoch})<br>\n")
-            f.write(f"<strong>Training Time:</strong> {best.total_time_sec:.1f}s ({best.total_time_sec/60:.2f} min)</p>\n")
             f.write("</div>\n")
         
-        # Failed experiments warning
-        failed = [r for r in results if r.failed]
-        if failed:
-            f.write("<div class='warning-box'>\n")
-            f.write("<h3>⚠️ Failed Experiments</h3>\n")
-            f.write("<p>The following configurations resulted in training failures (loss explosion):</p>\n<ul>\n")
-            for r in failed:
-                f.write(f"<li><strong>{r.get_loss_description()}:</strong> {r.get_hyperparameters_str()} ")
-                f.write(f"(Final acc: {r.final_accuracy:.2f}%)</li>\n")
-            f.write("</ul>\n")
-            f.write("<p><strong>Common pattern:</strong> b-annealing (τ-annealing) without proper gradient clipping causes loss explosion.</p>\n")
-            f.write("</div>\n")
+        # ============== TRAINING CURVES ==============
+        f.write("<div id='curves-section'>\n")
+        f.write("<h2>Training Curves</h2>\n")
         
-        # Training curves with embedded plots
-        f.write("<h2>📊 Training Curves</h2>\n")
-        f.write("<p><strong>Note:</strong> Each plot shows both <strong>Loss</strong> (left panel) and <strong>Accuracy</strong> (right panel) curves with train/test comparison.</p>\n")
-        f.write("<p><em>Including all experiments (successful and failed) to show training dynamics.</em></p>\n")
-        
-        for loss_type in sorted(set(r.loss_type for r in results)):
-            loss_results = [r for r in results if r.loss_type == loss_type]
-            # Sort: successful first (by accuracy), then failed
-            loss_results = sorted(loss_results, key=lambda x: (not x.failed, x.best_accuracy if x.best_accuracy else 0), reverse=True)
+        for dataset in sorted(datasets.keys()):
+            ds_name = dataset_names.get(dataset, dataset)
+            ds_color = dataset_colors.get(dataset, '#95a5a6')
+            dataset_results = datasets[dataset]
+            # Sort by filename
+            dataset_results = sorted(dataset_results, key=lambda x: x.filename)
             
-            f.write(f"<h3>{loss_results[0].get_loss_description()}</h3>\n")
+            f.write(f"<h3 style='color: {ds_color};'>{ds_name}</h3>\n")
             
-            for r in loss_results:
+            for r in dataset_results:
                 if r.plot_file and os.path.exists(r.plot_file):
                     f.write(f"<div class='plot-container'>\n")
                     
-                    # Add status indicator
-                    status_badge = "<span class='failed'>❌ FAILED</span>" if r.failed else "<span class='success'>✅ Success</span>"
-                    accuracy_str = f"Best: {r.best_accuracy:.2f}%" if r.best_accuracy else f"Final: {r.final_accuracy:.2f}%"
+                    status = "❌" if r.failed else "✅"
+                    acc_str = f"{r.best_accuracy:.2f}%" if r.best_accuracy else f"{r.final_accuracy:.2f}%"
+                    filename = r.filename.replace('.txt', '')
                     
-                    f.write(f"<h4>{r.get_hyperparameters_str()} - {r.epochs} epochs ({accuracy_str}) {status_badge}</h4>\n")
+                    f.write(f"<h4><code>{filename}</code> | {acc_str} {status}</h4>\n")
                     
-                    # Embed image as base64 for portable HTML
                     try:
                         with open(r.plot_file, 'rb') as img_file:
                             img_data = base64.b64encode(img_file.read()).decode()
                             f.write(f'<img src="data:image/png;base64,{img_data}" alt="{r.experiment_name}">\n')
                     except:
-                        # Fallback to relative path
                         f.write(f'<img src="{r.plot_file}" alt="{r.experiment_name}">\n')
                     
                     f.write("</div>\n")
         
-        # Close HTML
+        f.write("</div>\n")
+        
         f.write("""
         <hr>
-        <p style="text-align: center; color: #7f8c8d; margin-top: 30px;">
-            <em>Report generated automatically by analyze_all_results.py</em>
+        <p style="text-align: center; color: #7f8c8d;">
+            <em>Generated by analyze_all_results.py</em>
         </p>
     </div>
 </body>
@@ -585,51 +529,47 @@ def generate_html_report(results, output_file):
 
 
 def print_console_summary(results):
-    """Print summary to console"""
-    print("\n" + "="*80)
-    print("📊 EXPERIMENTAL RESULTS SUMMARY")
-    print("="*80 + "\n")
+    """Print summary to console - simple tables grouped by dataset"""
+    print("\n" + "="*120)
+    print("EXPERIMENTAL RESULTS SUMMARY")
+    print("="*120 + "\n")
     
-    print(f"Total experiments analyzed: {len(results)}\n")
+    print(f"Total experiments: {len(results)}\n")
     
-    successful = [r for r in results if not r.failed and r.best_accuracy is not None]
-    failed = [r for r in results if r.failed]
+    # Group by dataset
+    datasets = group_by_dataset(results)
+    dataset_names = {'mnist': 'MNIST', 'cifar10': 'CIFAR-10', 'unknown': 'Unknown'}
     
-    print(f"✅ Successful: {len(successful)}")
-    print(f"❌ Failed: {len(failed)}\n")
+    # Dataset summaries
+    for dataset in sorted(datasets.keys()):
+        ds_name = dataset_names.get(dataset, dataset)
+        dataset_results = datasets[dataset]
+        
+        # Sort by filename
+        dataset_results = sorted(dataset_results, key=lambda x: x.filename)
+        
+        successful = len([r for r in dataset_results if not r.failed])
+        failed = len([r for r in dataset_results if r.failed])
+        
+        print("="*120)
+        print(f"{ds_name} ({len(dataset_results)} experiments: {successful} ✅, {failed} ❌)")
+        print("="*120)
+        print(f"{'Filename':<55} {'Loss':<6} {'Best Acc':<10} {'Final Acc':<10} {'Epochs':<8} {'Status':<6}")
+        print("-" * 120)
+        
+        for r in dataset_results:
+            status = "❌" if r.failed else "✅"
+            best_acc = f"{r.best_accuracy:.2f}%" if r.best_accuracy else "N/A"
+            final_acc = f"{r.final_accuracy:.2f}%" if r.final_accuracy else "N/A"
+            filename = r.filename.replace('.txt', '')[:53]
+            # Get base loss type (ce, hinge, vlog)
+            loss_type = r.loss_type.split('_')[0] if r.loss_type else "N/A"
+            
+            print(f"{filename:<55} {loss_type:<6} {best_acc:<10} {final_acc:<10} {r.epochs:<8} {status:<6}")
+        
+        print()
     
-    if successful:
-        print("🏆 TOP 5 PERFORMERS:\n")
-        print(f"{'Rank':<6} {'Loss Function':<30} {'Best Accuracy':<15} {'Epochs':<8}")
-        print("-" * 80)
-        
-        top_5 = sorted(successful, key=lambda x: x.best_accuracy, reverse=True)[:5]
-        medals = ["🥇", "🥈", "🥉", "4.", "5."]
-        
-        for i, r in enumerate(top_5):
-            print(f"{medals[i]:<6} {r.get_loss_description():<30} {r.best_accuracy:>6.2f}%{'':<8} {r.epochs:<8}")
-        
-        print("\n")
-        
-        # Best by loss type
-        print("📈 BEST PERFORMANCE BY LOSS TYPE:\n")
-        loss_type_best = {}
-        for r in successful:
-            if r.loss_type not in loss_type_best or r.best_accuracy > loss_type_best[r.loss_type].best_accuracy:
-                loss_type_best[r.loss_type] = r
-        
-        for loss_type, r in sorted(loss_type_best.items(), key=lambda x: x[1].best_accuracy, reverse=True):
-            print(f"  {r.get_loss_description():<30} {r.best_accuracy:>6.2f}% ({r.get_hyperparameters_str()})")
-        
-        print("\n")
-    
-    if failed:
-        print("⚠️  FAILED EXPERIMENTS:\n")
-        for r in failed:
-            print(f"  ❌ {r.get_loss_description()}: {r.get_hyperparameters_str()}")
-        print("\n")
-    
-    print("="*80 + "\n")
+    print("="*120 + "\n")
 
 
 def main():
