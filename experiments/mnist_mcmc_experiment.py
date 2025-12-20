@@ -98,20 +98,29 @@ class VlogLoss(nn.Module):
         """
         Compute V_log(x, b) element-wise
         x: stability values (can be positive or negative)
+        
+        Two versions available:
+        1. Original MCMC formula: V = b * (1 - x^(1/b))  -- mathematically correct limit
+        2. Normalized for GD:     V = 1 - x^(1/b)        -- stable gradients for b-annealing
+        
+        As b → ∞: both converge to shape of -ln(x), but (1) scales magnitude by b
         """
         b = self.b
         result = torch.zeros_like(x)
         
-        # For x > 0: V = b * (1 - x^(1/b))
         positive_mask = x > 0
         x_pos = x[positive_mask]
-        if len(x_pos) > 0:
-            # Clamp x^(1/b) to avoid numerical issues
-            result[positive_mask] = b * (1.0 - torch.clamp(torch.pow(x_pos, 1.0/b), max=10.0))
-        
-        # For x <= 0: V = b * (1 - x) 
         negative_mask = ~positive_mask
-        result[negative_mask] = b * (1.0 - x[negative_mask])
+        
+        # ===== VERSION 1: Original MCMC formula (b scales magnitude) =====
+        # if len(x_pos) > 0:
+        #     result[positive_mask] = b * (1.0 - torch.clamp(torch.pow(x_pos, 1.0/b), max=10.0))
+        # result[negative_mask] = b * (1.0 - x[negative_mask])
+        
+        # ===== VERSION 2: Normalized for Gradient Descent (stable magnitude) =====
+        if len(x_pos) > 0:
+            result[positive_mask] = 1.0 - torch.clamp(torch.pow(x_pos, 1.0/b), max=10.0)
+        result[negative_mask] = 1.0 - x[negative_mask]
         
         return result
     
