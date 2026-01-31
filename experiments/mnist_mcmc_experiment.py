@@ -462,6 +462,10 @@ def main():
                         help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
                         help='learning rate (default: 0.01)')
+    parser.add_argument('--lr-decay-step', type=int, default=40, metavar='N',
+                        help='decay learning rate every N epochs (default: 40, set to 0 to disable)')
+    parser.add_argument('--lr-decay-factor', type=float, default=0.1, metavar='F',
+                        help='multiply learning rate by this factor at each decay step (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
                         help='SGD momentum (default: 0.5)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -635,6 +639,10 @@ def main():
     
     # Training loop
     print(f"\nStarting training for {args.epochs} epochs...")
+    if args.lr_decay_step > 0:
+        print(f"LR decay: every {args.lr_decay_step} epochs, multiply by {args.lr_decay_factor}")
+    else:
+        print("LR decay: disabled")
     print("="*70)
     
     train_losses = []
@@ -647,10 +655,10 @@ def main():
     start_time = time.time()
     
     for epoch in range(1, args.epochs + 1):
-        # Learning rate decay
-        if epoch % 40 == 0:
+        # Learning rate decay (configurable via --lr-decay-step and --lr-decay-factor)
+        if args.lr_decay_step > 0 and epoch % args.lr_decay_step == 0:
             for param_group in optimizer.param_groups:
-                param_group['lr'] *= 0.1
+                param_group['lr'] *= args.lr_decay_factor
             print(f"Learning rate decayed to {optimizer.param_groups[0]['lr']}")
         
         train_loss, train_acc = train(model, device, train_loader, optimizer, 
@@ -727,6 +735,10 @@ def main():
         f.write(f"Epochs: {args.epochs}\n")
         f.write(f"Batch Size: {args.batch_size}\n")
         f.write(f"Learning Rate: {args.lr}\n")
+        if args.lr_decay_step > 0:
+            f.write(f"LR Decay: every {args.lr_decay_step} epochs, factor={args.lr_decay_factor}\n")
+        else:
+            f.write(f"LR Decay: disabled\n")
         f.write(f"Num Workers: {args.num_workers}\n")
         
         if args.loss_type == 'hinge':
