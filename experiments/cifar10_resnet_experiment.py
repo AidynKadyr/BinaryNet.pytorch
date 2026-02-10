@@ -1,6 +1,6 @@
 """
-CIFAR-10 Binary Network with MCMC-inspired Loss Functions
-Same experimental pipeline as MNIST but for CIFAR-10
+CIFAR-10 Binary ResNet with MCMC-inspired Loss Functions
+Same experimental pipeline as CIFAR-10 VGG but using ResNet architecture
 
 Compares:
 1. Standard Cross-Entropy
@@ -19,7 +19,7 @@ from torch.autograd import Variable
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from models.vgg_cifar10_binary import VGG_Cifar10
+from models.resnet_binary import ResNet_cifar10
 from models.binarized_modules import Binarize
 import numpy as np
 import matplotlib.pyplot as plt
@@ -41,33 +41,31 @@ from mnist_mcmc_experiment import (
 
 
 # ============================================================================
-# Modified VGG Model with return_logits support
+# Modified ResNet Model with return_logits support
 # ============================================================================
 
-class VGG_Cifar10_Logits(VGG_Cifar10):
+class ResNet_cifar10_Logits(ResNet_cifar10):
     """
-    Extended VGG_Cifar10 with return_logits option for Vlog/Hinge losses
+    Extended ResNet_cifar10 with return_logits option for Vlog/Hinge losses.
+    Overrides forward() to optionally skip the final LogSoftmax.
     """
-    def __init__(self, num_classes=10):
-        super(VGG_Cifar10_Logits, self).__init__(num_classes)
-        # Remove LogSoftmax from classifier for logits mode
-        self.classifier = nn.Sequential(
-            nn.Linear(512 * 4 * 4, 1024, bias=True),
-            nn.BatchNorm1d(1024),
-            nn.Hardtanh(inplace=True),
-            nn.Linear(1024, 1024, bias=True),
-            nn.BatchNorm1d(1024),
-            nn.Hardtanh(inplace=True),
-            nn.Linear(1024, num_classes, bias=True),
-            nn.BatchNorm1d(num_classes, affine=False),
-        )
-        self.logsoftmax = nn.LogSoftmax(dim=1)
-    
     def forward(self, x, return_logits=False):
-        x = self.features(x)
-        x = x.view(-1, 512 * 4 * 4)
-        x = self.classifier(x)
-        
+        x = self.conv1(x)
+        x = self.maxpool(x)
+        x = self.bn1(x)
+        x = self.tanh1(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.bn2(x)
+        x = self.tanh2(x)
+        x = self.fc(x)
+        x = self.bn3(x)
+
         if return_logits:
             return x  # Return raw logits for Vlog/Hinge loss
         return self.logsoftmax(x)
@@ -178,13 +176,13 @@ def test(model, device, test_loader, criterion, args):
 # ============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='CIFAR-10 BinaryNet with MCMC Loss')
+    parser = argparse.ArgumentParser(description='CIFAR-10 Binary ResNet with MCMC Loss')
     parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=100, metavar='N',
                         help='input batch size for testing (default: 100)')
-    parser.add_argument('--epochs', type=int, default=160, metavar='N',
-                        help='number of epochs to train (default: 160)')
+    parser.add_argument('--epochs', type=int, default=250, metavar='N',
+                        help='number of epochs to train (default: 250)')
     parser.add_argument('--lr', type=float, default=5e-3, metavar='LR',
                         help='learning rate (default: 5e-3)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -231,9 +229,9 @@ def main():
     
     kwargs = {'num_workers': args.num_workers, 'pin_memory': True} if use_cuda else {}
     if use_cuda:
-        print(f"✅ Using GPU: {torch.cuda.get_device_name(0)}")
+        print(f"Using GPU: {torch.cuda.get_device_name(0)}")
     else:
-        print("⚠️ Using CPU (training will be VERY slow!)")
+        print("Using CPU (training will be VERY slow!)")
     
     # CIFAR-10 data loaders
     print("Loading CIFAR-10 dataset...")
@@ -258,10 +256,14 @@ def main():
         batch_size=args.test_batch_size, shuffle=False, **kwargs)
     
     # Model
-    print("Creating VGG BinaryNet model...")
-    model = VGG_Cifar10_Logits(num_classes=10).to(device)
+    print("Creating ResNet-18 BinaryNet model (inflate=5)...")
+    model = ResNet_cifar10_Logits(num_classes=10).to(device)
     
-    # Loss function and schedulers setup (same as MNIST)
+    # Print model parameter count
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Total parameters: {total_params:,}")
+    
+    # Loss function and schedulers setup
     beta_scheduler = None
     b_scheduler = None
     
@@ -277,13 +279,13 @@ def main():
         criterion = HingeLoss(margin=args.hinge_margin, b=args.hinge_b_start, beta=1.0).to(device)
         b_scheduler = BScheduler(b_start=args.hinge_b_start, b_end=args.hinge_b_end,
                                 total_epochs=args.epochs, schedule_type='exponential')
-        print(f"Using Hinge + b-Annealing (b: {args.hinge_b_start}→{args.hinge_b_end})")
+        print(f"Using Hinge + b-Annealing (b: {args.hinge_b_start}->{args.hinge_b_end})")
     
     elif args.loss_type == 'hinge_beta_annealing':
         criterion = HingeLoss(margin=args.hinge_margin, b=1.0, beta=args.hinge_beta_start).to(device)
         beta_scheduler = BetaScheduler(beta_start=args.hinge_beta_start, beta_end=args.hinge_beta_end,
                                        total_epochs=args.epochs, schedule_type='linear')
-        print(f"Using Hinge + β-Annealing (β: {args.hinge_beta_start}→{args.hinge_beta_end})")
+        print(f"Using Hinge + beta-Annealing (beta: {args.hinge_beta_start}->{args.hinge_beta_end})")
     
     elif args.loss_type == 'hinge_both_annealing':
         criterion = HingeLoss(margin=args.hinge_margin, b=args.hinge_b_start, beta=args.hinge_beta_start).to(device)
@@ -296,21 +298,21 @@ def main():
     elif args.loss_type == 'vlog_fixed':
         criterion = VlogLoss(b=args.b_value, beta=args.beta_fixed, 
                             normalization_dim=args.normalization_dim).to(device)
-        print(f"Using Vlog Loss (fixed b={args.b_value}, β={args.beta_fixed})")
+        print(f"Using Vlog Loss (fixed b={args.b_value}, beta={args.beta_fixed})")
     
     elif args.loss_type == 'vlog_annealing':
         criterion = VlogLoss(b=args.b_value, beta=args.beta_start, 
                             normalization_dim=args.normalization_dim).to(device)
         beta_scheduler = BetaScheduler(beta_start=args.beta_start, beta_end=args.beta_end,
                                        total_epochs=args.epochs, schedule_type='linear')
-        print(f"Using Vlog + β-Annealing (β: {args.beta_start}→{args.beta_end}, b={args.b_value})")
+        print(f"Using Vlog + beta-Annealing (beta: {args.beta_start}->{args.beta_end}, b={args.b_value})")
     
     elif args.loss_type == 'vlog_b_annealing':
         criterion = VlogLoss(b=args.vlog_b_start, beta=args.beta_fixed,
                             normalization_dim=args.normalization_dim).to(device)
         b_scheduler = BScheduler(b_start=args.vlog_b_start, b_end=args.vlog_b_end,
                                 total_epochs=args.epochs, schedule_type='exponential')
-        print(f"Using Vlog + b-Annealing (b: {args.vlog_b_start}→{args.vlog_b_end})")
+        print(f"Using Vlog + b-Annealing (b: {args.vlog_b_start}->{args.vlog_b_end})")
     
     elif args.loss_type == 'vlog_both_annealing':
         criterion = VlogLoss(b=args.vlog_b_start, beta=args.beta_start,
@@ -321,11 +323,12 @@ def main():
                                        total_epochs=args.epochs, schedule_type='linear')
         print(f"Using Vlog + BOTH Annealing")
     
-    # Optimizer (using regime from VGG model)
+    # Optimizer (Adam, matching ResNet regime)
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     
     # Training loop
     print(f"\nStarting training for {args.epochs} epochs...")
+    print(f"LR schedule: {args.lr} -> 1e-3 (ep101) -> 5e-4 (ep142) -> 1e-4 (ep184) -> 1e-5 (ep220)")
     print("="*70)
     
     train_losses = []
@@ -337,19 +340,23 @@ def main():
     start_time = time.time()
     
     for epoch in range(1, args.epochs + 1):
-        # Learning rate schedule (VGG regime)
-        if epoch == 40:
+        # Learning rate schedule (ResNet regime)
+        if epoch == 101:
             for param_group in optimizer.param_groups:
                 param_group['lr'] = 1e-3
-            print(f"Learning rate → 1e-3")
-        elif epoch == 80:
+            print(f"Learning rate -> 1e-3")
+        elif epoch == 142:
             for param_group in optimizer.param_groups:
                 param_group['lr'] = 5e-4
-            print(f"Learning rate → 5e-4")
-        elif epoch == 100:
+            print(f"Learning rate -> 5e-4")
+        elif epoch == 184:
             for param_group in optimizer.param_groups:
                 param_group['lr'] = 1e-4
-            print(f"Learning rate → 1e-4")
+            print(f"Learning rate -> 1e-4")
+        elif epoch == 220:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = 1e-5
+            print(f"Learning rate -> 1e-5")
         
         train_loss, train_acc = train(model, device, train_loader, optimizer, 
                                       criterion, epoch, args, beta_scheduler, b_scheduler)
@@ -372,9 +379,9 @@ def main():
     print(f"Best Test Accuracy: {max(test_accs):.2f}% (Epoch {test_accs.index(max(test_accs))+1})")
     
     # Create experiment name
-    experiment_name = f'cifar10_{args.loss_type}'
+    experiment_name = f'cifar10_resnet_{args.loss_type}'
     
-    # Add hyperparameters to name (same logic as MNIST)
+    # Add hyperparameters to name
     if args.loss_type == 'hinge':
         experiment_name += f'_m{args.hinge_margin}'
     elif args.loss_type == 'hinge_b_annealing':
@@ -416,12 +423,13 @@ def main():
         
         f.write(f"CONFIGURATION:\n")
         f.write(f"Dataset: CIFAR-10\n")
-        f.write(f"Model: VGG BinaryNet\n")
+        f.write(f"Model: ResNet-18 BinaryNet (inflate=5, depth=18)\n")
+        f.write(f"Total Parameters: {total_params:,}\n")
         f.write(f"Loss Type: {args.loss_type}\n")
         f.write(f"Epochs: {args.epochs}\n")
         f.write(f"Batch Size: {args.batch_size}\n")
         f.write(f"Learning Rate: {args.lr}\n")
-        f.write(f"LR Decay: epoch 40→1e-3, epoch 80→5e-4, epoch 100→1e-4\n")
+        f.write(f"LR Decay: ep101->1e-3, ep142->5e-4, ep184->1e-4, ep220->1e-5\n")
         f.write(f"Num Workers: {args.num_workers}\n")
         
         # Loss-specific params
@@ -430,20 +438,20 @@ def main():
             if 'b_annealing' in args.loss_type:
                 f.write(f"b-annealing: {args.hinge_b_start} -> {args.hinge_b_end}\n")
             if 'beta_annealing' in args.loss_type:
-                f.write(f"β-annealing: {args.hinge_beta_start} -> {args.hinge_beta_end}\n")
+                f.write(f"beta-annealing: {args.hinge_beta_start} -> {args.hinge_beta_end}\n")
         elif args.loss_type.startswith('vlog'):
             if args.loss_type == 'vlog_fixed':
                 f.write(f"b value: {args.b_value}\n")
                 f.write(f"Fixed beta: {args.beta_fixed}\n")
             elif args.loss_type == 'vlog_annealing':
                 f.write(f"b value: {args.b_value}\n")
-                f.write(f"β-annealing: {args.beta_start} -> {args.beta_end}\n")
+                f.write(f"beta-annealing: {args.beta_start} -> {args.beta_end}\n")
             elif args.loss_type == 'vlog_b_annealing':
                 f.write(f"b-annealing: {args.vlog_b_start} -> {args.vlog_b_end}\n")
                 f.write(f"Fixed beta: {args.beta_fixed}\n")
             elif args.loss_type == 'vlog_both_annealing':
                 f.write(f"b-annealing: {args.vlog_b_start} -> {args.vlog_b_end}\n")
-                f.write(f"β-annealing: {args.beta_start} -> {args.beta_end}\n")
+                f.write(f"beta-annealing: {args.beta_start} -> {args.beta_end}\n")
         
         f.write(f"\nTRAINING TIME:\n")
         f.write(f"Total Time: {training_time:.1f}s ({training_time/60:.2f} min)\n")
@@ -459,9 +467,8 @@ def main():
         for i in range(len(test_accs)):
             f.write(f"{i+1:<8} {train_losses[i]:<15.6f} {test_losses[i]:<15.6f} {train_accs[i]:<12.2f}% {test_accs[i]:<12.2f}%\n")
     
-    print(f"\n💾 Results saved to: {results_file}")
+    print(f"\nResults saved to: {results_file}")
 
 
 if __name__ == '__main__':
     main()
-
