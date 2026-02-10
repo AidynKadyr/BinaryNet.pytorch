@@ -181,10 +181,14 @@ def main():
                         help='input batch size for training (default: 128)')
     parser.add_argument('--test-batch-size', type=int, default=100, metavar='N',
                         help='input batch size for testing (default: 100)')
-    parser.add_argument('--epochs', type=int, default=250, metavar='N',
-                        help='number of epochs to train (default: 250)')
+    parser.add_argument('--epochs', type=int, default=100, metavar='N',
+                        help='number of epochs to train (default: 100)')
     parser.add_argument('--lr', type=float, default=5e-3, metavar='LR',
                         help='learning rate (default: 5e-3)')
+    parser.add_argument('--lr-decay-factor', type=float, default=0.2,
+                        help='multiply LR by this factor at each decay step (default: 0.2)')
+    parser.add_argument('--lr-decay-steps', type=int, default=4,
+                        help='number of LR decay steps during training (default: 4)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
@@ -328,7 +332,19 @@ def main():
     
     # Training loop
     print(f"\nStarting training for {args.epochs} epochs...")
-    print(f"LR schedule: {args.lr} -> 1e-3 (ep101) -> 5e-4 (ep142) -> 1e-4 (ep184) -> 1e-5 (ep220)")
+    # Compute LR decay milestones (evenly spaced)
+    lr_milestones = set()
+    for step in range(1, args.lr_decay_steps + 1):
+        milestone = int(args.epochs * step / (args.lr_decay_steps + 1))
+        lr_milestones.add(milestone)
+    
+    # Print schedule preview
+    lr_preview = args.lr
+    schedule_parts = [f"{args.lr}"]
+    for m in sorted(lr_milestones):
+        lr_preview *= args.lr_decay_factor
+        schedule_parts.append(f"{lr_preview:.1e} (ep{m})")
+    print(f"LR schedule: {' -> '.join(schedule_parts)}")
     print("="*70)
     
     train_losses = []
@@ -340,23 +356,12 @@ def main():
     start_time = time.time()
     
     for epoch in range(1, args.epochs + 1):
-        # Learning rate schedule (ResNet regime)
-        if epoch == 101:
+        # Learning rate schedule (automatic decay)
+        if epoch in lr_milestones:
             for param_group in optimizer.param_groups:
-                param_group['lr'] = 1e-3
-            print(f"Learning rate -> 1e-3")
-        elif epoch == 142:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = 5e-4
-            print(f"Learning rate -> 5e-4")
-        elif epoch == 184:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = 1e-4
-            print(f"Learning rate -> 1e-4")
-        elif epoch == 220:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = 1e-5
-            print(f"Learning rate -> 1e-5")
+                param_group['lr'] *= args.lr_decay_factor
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"Learning rate -> {current_lr:.1e}")
         
         train_loss, train_acc = train(model, device, train_loader, optimizer, 
                                       criterion, epoch, args, beta_scheduler, b_scheduler)
@@ -429,7 +434,7 @@ def main():
         f.write(f"Epochs: {args.epochs}\n")
         f.write(f"Batch Size: {args.batch_size}\n")
         f.write(f"Learning Rate: {args.lr}\n")
-        f.write(f"LR Decay: ep101->1e-3, ep142->5e-4, ep184->1e-4, ep220->1e-5\n")
+        f.write(f"LR Decay Factor: {args.lr_decay_factor} at {args.lr_decay_steps} steps (milestones: {sorted(lr_milestones)})\n")
         f.write(f"Num Workers: {args.num_workers}\n")
         
         # Loss-specific params
