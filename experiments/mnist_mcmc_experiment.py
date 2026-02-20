@@ -1,20 +1,24 @@
 """
-MNIST Binary Network with MCMC-inspired Loss Functions
-Compares:
-1. Standard Cross-Entropy
-2. HingeLoss (SVM-style margin-based)
-3. Vlog potential (fixed beta, constant b)
-4. Vlog potential with beta-annealing (beta: small -> large)
+MNIST Binary Network with MCMC-inspired Loss Functions (minimal).
+Compares: CE, Hinge (baseline), Vlog (fixed b & beta), Vlog (fixed b=1, beta-annealing).
+
+Example commands (always set --lr; vlog_fixed uses --b-value and --beta-fixed; vlog_annealing uses --beta-start and --beta-end):
+
+  python experiments/mnist_mcmc_experiment.py --loss-type ce --epochs 40 --batch-size 64 --lr 0.01 --plot-dir experiments/plots
+
+  python experiments/mnist_mcmc_experiment.py --loss-type hinge --epochs 40 --batch-size 64 --lr 0.01 --hinge-margin 1.0 --plot-dir experiments/plots
+
+  python experiments/mnist_mcmc_experiment.py --loss-type vlog_fixed --epochs 40 --batch-size 64 --lr 0.01 --b-value 10 --beta-fixed 1.0 --plot-dir experiments/plots
+
+  python experiments/mnist_mcmc_experiment.py --loss-type vlog_annealing --epochs 40 --batch-size 64 --lr 0.01 --beta-start 0.5 --beta-end 5.0 --plot-dir experiments/plots
 """
 
 from __future__ import print_function
 import argparse
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
-from torch.autograd import Variable
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -30,48 +34,16 @@ matplotlib.use('Agg')  # Use non-interactive backend for saving figures
 # ============================================================================
 
 class HingeLoss(nn.Module):
-    """
-    Parametric Hinge Loss with b-annealing and β-annealing support
-    
-    Standard Hinge: L = mean(max(0, margin - y * f(x)))
-    With b parameter: L = mean(max(0, margin - y * f(x))^b)  [b controls sharpness]
-    With β parameter: L = β * mean(...)  [β controls loss scale]
-    
-    b-annealing: b goes from 1 → large (sharpens the loss)
-    β-annealing: β goes from small → large (increases loss magnitude)
-    """
-    def __init__(self, margin=1.0, b=1.0, beta=1.0):
+    """Standard Hinge (SVM-style): L = mean(max(0, margin - y * f(x))). One-hot targets: -1/+1."""
+    def __init__(self, margin=1.0):
         super(HingeLoss, self).__init__()
         self.margin = margin
-        self.b = b  # Sharpness parameter (1 = standard hinge)
-        self.beta = beta  # Temperature parameter (1 = standard scale)
-    
+
     def forward(self, input, target_onehot):
-        """
-        Args:
-            input: (batch_size, num_classes) - raw logits
-            target_onehot: (batch_size, num_classes) - one-hot encoded with -1/+1
-        """
-        # Hinge loss: max(0, margin - y * f(x))
+        # input: (batch_size, num_classes), target_onehot: (batch_size, num_classes) with -1/+1
         output = self.margin - input.mul(target_onehot)
-        output = torch.clamp(output, min=0)  # ReLU: max(0, x)
-        
-        # Apply b-parameter (sharpness)
-        if self.b != 1.0:
-            output = torch.pow(output + 1e-8, self.b)  # Add epsilon for numerical stability
-        
-        # Apply β-parameter (temperature/scale)
-        loss = self.beta * output.mean()
-        
-        return loss
-    
-    def update_b(self, new_b):
-        """Update b for b-annealing"""
-        self.b = new_b
-    
-    def update_beta(self, new_beta):
-        """Update beta for β-annealing"""
-        self.beta = new_beta
+        output = torch.clamp(output, min=0)
+        return output.mean()
 
 
 # ============================================================================
@@ -80,97 +52,37 @@ class HingeLoss(nn.Module):
 
 class VlogLoss(nn.Module):
     """
-    Implements the Vlog potential from MCMC:
-    V_log(x, b) = b * (1 - x^(1/b))  if x > 0
-                = b * (1 - x)        if x <= 0
-    
-    For multi-class: stability = (correct_logit - max_wrong_logit) / sqrt(N)
-    Total loss = beta * mean(V_log(stabilities, b))
+    Vlog potential: V(x,b) = 1 - x^(1/b) for x>0, 1-x for x<=0.
+    Loss = beta * mean(V(stabilities, b)); stability = (correct - max_wrong) / sqrt(N).
     """
-    def __init__(self, b=10.0, beta=1.0, normalization_dim=10):
+    def __init__(self, b=1.0, beta=1.0, normalization_dim=10):
         super(VlogLoss, self).__init__()
-        self.b = b  # tau parameter (kept constant for now)
-        self.beta = beta  # inverse temperature (will be annealed)
-        self.normalization_dim = normalization_dim
+        self.b = b
+        self.beta = beta
         self.sqrt_n = np.sqrt(normalization_dim)
-    
+
     def vlog_potential(self, x):
-        """
-        Compute V_log(x, b) element-wise
-        x: stability values (can be positive or negative)
-        
-        Two versions available:
-        1. Original MCMC formula: V = b * (1 - x^(1/b))  -- mathematically correct limit
-        2. Normalized for GD:     V = 1 - x^(1/b)        -- stable gradients for b-annealing
-        
-        As b → ∞: both converge to shape of -ln(x), but (1) scales magnitude by b
-        """
-        b = self.b
         result = torch.zeros_like(x)
-        
-        positive_mask = x > 0
-        x_pos = x[positive_mask]
-        negative_mask = ~positive_mask
-        
-        # ===== VERSION 1: Original MCMC formula (b scales magnitude) =====
-        # if len(x_pos) > 0:
-        #     result[positive_mask] = b * (1.0 - torch.clamp(torch.pow(x_pos, 1.0/b), max=10.0))
-        # result[negative_mask] = b * (1.0 - x[negative_mask])
-        
-        # ===== VERSION 2: Normalized for Gradient Descent (stable magnitude) =====
-        if len(x_pos) > 0:
-            result[positive_mask] = 1.0 - torch.clamp(torch.pow(x_pos, 1.0/b), max=10.0)
-        result[negative_mask] = 1.0 - x[negative_mask]
-        
+        pos = x > 0
+        if pos.any():
+            result[pos] = 1.0 - torch.clamp(torch.pow(x[pos], 1.0 / self.b), max=10.0)
+        result[~pos] = 1.0 - x[~pos]
         return result
-    
+
     def compute_stabilities(self, output, target):
-        """
-        Compute margin-based stabilities for multi-class classification
-        stability = (correct_class_score - max_wrong_class_score) / sqrt(N)
-        
-        Args:
-            output: (batch_size, num_classes) - logits or log-probabilities
-            target: (batch_size,) - class labels
-        Returns:
-            stabilities: (batch_size,) - margin values
-        """
-        batch_size = output.size(0)
-        num_classes = output.size(1)
-        
-        # Get correct class scores
+        batch_size, num_classes = output.size(0), output.size(1)
         correct_scores = output[torch.arange(batch_size), target]
-        
-        # Get max of wrong class scores
-        # Create mask to exclude correct class
         mask = torch.ones_like(output).bool()
         mask[torch.arange(batch_size), target] = False
-        
-        wrong_scores = output.masked_fill(~mask, float('-inf'))
-        max_wrong_scores = wrong_scores.max(dim=1)[0]
-        
-        # Compute margin (stability)
-        margins = (correct_scores - max_wrong_scores) / self.sqrt_n
-        
-        return margins
-    
-    def forward(self, output, target):
-        """
-        Compute loss = beta * mean(V_log(stabilities, b))
-        """
-        stabilities = self.compute_stabilities(output, target)
-        potentials = self.vlog_potential(stabilities)
-        loss = self.beta * potentials.mean()  # β-annealing enabled!
+        max_wrong_scores = output.masked_fill(~mask, float('-inf')).max(dim=1)[0]
+        return (correct_scores - max_wrong_scores) / self.sqrt_n
 
-        return loss
-    
+    def forward(self, output, target):
+        stabilities = self.compute_stabilities(output, target)
+        return self.beta * self.vlog_potential(stabilities).mean()
+
     def update_beta(self, new_beta):
-        """Update beta for annealing"""
         self.beta = new_beta
-    
-    def update_b(self, new_b):
-        """Update b for b-annealing (tau-annealing)"""
-        self.b = new_b
 
 
 class BetaScheduler:
@@ -198,35 +110,6 @@ class BetaScheduler:
             raise ValueError(f"Unknown schedule type: {self.schedule_type}")
         
         return beta
-
-
-class BScheduler:
-    """
-    Scheduler for b-annealing (tau-annealing): b increases from b_start to b_end
-    As b increases, the loss becomes sharper/steeper (like Julia MCMC: 1 → 10^6)
-    
-    In Julia: tau goes 1 → 10^-6, so b = 1/tau goes 1 → 10^6
-    """
-    def __init__(self, b_start=1.0, b_end=1000.0, total_epochs=100, schedule_type='exponential'):
-        self.b_start = b_start
-        self.b_end = b_end
-        self.total_epochs = total_epochs
-        self.schedule_type = schedule_type
-    
-    def get_b(self, epoch):
-        """Get b value for current epoch"""
-        if self.schedule_type == 'linear':
-            # Linear interpolation
-            alpha = epoch / self.total_epochs
-            b = self.b_start + (self.b_end - self.b_start) * alpha
-        elif self.schedule_type == 'exponential':
-            # Exponential growth (default, like Julia MCMC)
-            alpha = epoch / self.total_epochs
-            b = self.b_start * (self.b_end / self.b_start) ** alpha
-        else:
-            raise ValueError(f"Unknown schedule type: {self.schedule_type}")
-        
-        return b
 
 
 # ============================================================================
@@ -309,28 +192,17 @@ def plot_training_curves(train_losses, test_losses, train_accs, test_accs,
     ax2.set_title('Accuracy vs Epochs', fontsize=14, fontweight='bold')
     ax2.legend(fontsize=11)
     ax2.grid(True, alpha=0.3)
-    ax2.set_ylim([0, 100])
+    ax2.set_ylim([80, 100])
     
-    # Add overall title with experiment details
     if args is not None:
         if args.loss_type == 'ce':
-            title = f'Cross-Entropy Loss | LR={args.lr} | Batch={args.batch_size}'
+            title = f'Cross-Entropy | LR={args.lr} Batch={args.batch_size}'
         elif args.loss_type == 'hinge':
-            title = f'Hinge Loss (margin={args.hinge_margin}) | LR={args.lr} | Batch={args.batch_size}'
-        elif args.loss_type == 'hinge_b_annealing':
-            title = f'Hinge + b-Annealing (b: {args.hinge_b_start}→{args.hinge_b_end}) | LR={args.lr} | Batch={args.batch_size}'
-        elif args.loss_type == 'hinge_beta_annealing':
-            title = f'Hinge + β-Annealing (β: {args.hinge_beta_start}→{args.hinge_beta_end}) | LR={args.lr} | Batch={args.batch_size}'
-        elif args.loss_type == 'hinge_both_annealing':
-            title = f'Hinge + BOTH (b: {args.hinge_b_start}→{args.hinge_b_end}, β: {args.hinge_beta_start}→{args.hinge_beta_end}) | Batch={args.batch_size}'
+            title = f'Hinge (margin={args.hinge_margin}) | LR={args.lr} Batch={args.batch_size}'
         elif args.loss_type == 'vlog_fixed':
-            title = f'Vlog Loss (Fixed β={args.beta_fixed}, b={args.b_value}) | LR={args.lr} | Batch={args.batch_size}'
+            title = f'Vlog fixed (b={args.b_value}, β={args.beta_fixed}) | LR={args.lr} Batch={args.batch_size}'
         elif args.loss_type == 'vlog_annealing':
-            title = f'Vlog Loss (β: {args.beta_start}→{args.beta_end}, b={args.b_value}) | LR={args.lr} | Batch={args.batch_size}'
-        elif args.loss_type == 'vlog_b_annealing':
-            title = f'Vlog + b-Annealing (b: {args.vlog_b_start}→{args.vlog_b_end}, β={args.beta_fixed}) | LR={args.lr} | Batch={args.batch_size}'
-        elif args.loss_type == 'vlog_both_annealing':
-            title = f'Vlog + BOTH (b: {args.vlog_b_start}→{args.vlog_b_end}, β: {args.beta_start}→{args.beta_end}) | Batch={args.batch_size}'
+            title = f'Vlog β-anneal ({args.beta_start}→{args.beta_end}, b=1) | LR={args.lr} Batch={args.batch_size}'
         else:
             title = experiment_name
         fig.suptitle(title, fontsize=16, fontweight='bold', y=1.02)
@@ -350,25 +222,17 @@ def plot_training_curves(train_losses, test_losses, train_accs, test_accs,
 # Training and Testing
 # ============================================================================
 
-def train(model, device, train_loader, optimizer, criterion, epoch, args, beta_scheduler=None, b_scheduler=None):
+def train(model, device, train_loader, optimizer, criterion, epoch, args, beta_scheduler=None):
     model.train()
     total_loss = 0
     correct = 0
-    
-    # Update beta if using beta-annealing
+
     if beta_scheduler is not None:
-        current_beta = beta_scheduler.get_beta(epoch - 1)  # epoch starts from 1
+        current_beta = beta_scheduler.get_beta(epoch - 1)
         criterion.update_beta(current_beta)
         if epoch == 1 or epoch % 10 == 0:
             print(f'Epoch {epoch}: Beta = {current_beta:.4f}')
-    
-    # Update b if using b-annealing
-    if b_scheduler is not None:
-        current_b = b_scheduler.get_b(epoch - 1)  # epoch starts from 1
-        criterion.update_b(current_b)
-        if epoch == 1 or epoch % 10 == 0:
-            print(f'Epoch {epoch}: b = {current_b:.4f}')
-    
+
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -477,42 +341,15 @@ def main():
     parser.add_argument('--num-workers', type=int, default=4, metavar='N',
                         help='number of data loading workers (default: 4, use 0 for Windows)')
     
-    # Loss function selection
-    parser.add_argument('--loss-type', type=str, default='ce', 
-                        choices=['ce', 'hinge', 'hinge_b_annealing', 'hinge_beta_annealing', 'hinge_both_annealing',
-                                 'vlog_fixed', 'vlog_annealing', 'vlog_b_annealing', 'vlog_both_annealing'],
-                        help='Loss function: ce (CrossEntropy), hinge (standard), hinge_b_annealing (tau-annealing), '
-                             'hinge_beta_annealing (temperature-annealing), hinge_both_annealing (both), '
-                             'vlog_fixed (Vlog constant), vlog_annealing (Vlog beta-annealing), '
-                             'vlog_b_annealing (Vlog b-annealing), vlog_both_annealing (Vlog both)')
-    
-    # Hinge loss hyperparameters
-    parser.add_argument('--hinge-margin', type=float, default=1.0,
-                        help='Margin for Hinge loss (default: 1.0)')
-    parser.add_argument('--hinge-b-start', type=float, default=1.0,
-                        help='Starting b for Hinge b-annealing (default: 1.0)')
-    parser.add_argument('--hinge-b-end', type=float, default=100.0,
-                        help='Ending b for Hinge b-annealing (default: 100.0)')
-    parser.add_argument('--hinge-beta-start', type=float, default=0.5,
-                        help='Starting beta for Hinge beta-annealing (default: 0.5)')
-    parser.add_argument('--hinge-beta-end', type=float, default=5.0,
-                        help='Ending beta for Hinge beta-annealing (default: 5.0)')
-    
-    # Vlog hyperparameters
-    parser.add_argument('--b-value', type=float, default=10.0,
-                        help='b (tau) parameter for Vlog potential (default: 10.0)')
-    parser.add_argument('--vlog-b-start', type=float, default=1.0,
-                        help='Starting b for Vlog b-annealing (default: 1.0)')
-    parser.add_argument('--vlog-b-end', type=float, default=100.0,
-                        help='Ending b for Vlog b-annealing (default: 100.0)')
-    parser.add_argument('--beta-start', type=float, default=0.5,
-                        help='Starting beta for annealing (default: 0.5)')
-    parser.add_argument('--beta-end', type=float, default=5.0,
-                        help='Ending beta for annealing (default: 5.0)')
-    parser.add_argument('--beta-fixed', type=float, default=1.0,
-                        help='Fixed beta value when not annealing (default: 1.0)')
-    parser.add_argument('--normalization-dim', type=int, default=10,
-                        help='Dimension for stability normalization (default: 10 for output classes)')
+    parser.add_argument('--loss-type', type=str, default='ce',
+                        choices=['ce', 'hinge', 'vlog_fixed', 'vlog_annealing'],
+                        help='ce | hinge | vlog_fixed (use --b-value, --beta-fixed) | vlog_annealing (use --beta-start, --beta-end)')
+    parser.add_argument('--hinge-margin', type=float, default=1.0, help='Hinge margin (default: 1.0)')
+    parser.add_argument('--b-value', type=float, default=10.0, help='Vlog fixed b for vlog_fixed only (default: 10.0)')
+    parser.add_argument('--beta-fixed', type=float, default=1.0, help='Vlog set beta for vlog_fixed only (default: 1.0)')
+    parser.add_argument('--beta-start', type=float, default=0.5, help='Vlog beta-annealing start for vlog_annealing only (default: 0.5)')
+    parser.add_argument('--beta-end', type=float, default=5.0, help='Vlog beta-annealing end for vlog_annealing only (default: 5.0)')
+    parser.add_argument('--normalization-dim', type=int, default=10, help='Stability norm dim (default: 10)')
     
     # Plotting and saving options
     parser.add_argument('--plot-dir', type=str, default='experiments/plots',
@@ -554,85 +391,21 @@ def main():
     # Model
     model = Net().to(device)
     
-    # Loss function and schedulers
     beta_scheduler = None
-    b_scheduler = None
-    
     if args.loss_type == 'ce':
         criterion = nn.CrossEntropyLoss()
         print("Using Cross-Entropy Loss")
-    
     elif args.loss_type == 'hinge':
-        criterion = HingeLoss(margin=args.hinge_margin, b=1.0, beta=1.0).to(device)
+        criterion = HingeLoss(margin=args.hinge_margin).to(device)
         print(f"Using Hinge Loss (margin={args.hinge_margin})")
-    
-    elif args.loss_type == 'hinge_b_annealing':
-        criterion = HingeLoss(margin=args.hinge_margin, b=args.hinge_b_start, beta=1.0).to(device)
-        b_scheduler = BScheduler(b_start=args.hinge_b_start,
-                                 b_end=args.hinge_b_end,
-                                 total_epochs=args.epochs,
-                                 schedule_type='exponential')
-        print(f"Using Hinge Loss with b-Annealing (b: {args.hinge_b_start} -> {args.hinge_b_end}, margin={args.hinge_margin})")
-    
-    elif args.loss_type == 'hinge_beta_annealing':
-        criterion = HingeLoss(margin=args.hinge_margin, b=1.0, beta=args.hinge_beta_start).to(device)
-        beta_scheduler = BetaScheduler(beta_start=args.hinge_beta_start,
-                                       beta_end=args.hinge_beta_end,
-                                       total_epochs=args.epochs,
-                                       schedule_type='linear')
-        print(f"Using Hinge Loss with β-Annealing (beta: {args.hinge_beta_start} -> {args.hinge_beta_end}, margin={args.hinge_margin})")
-    
-    elif args.loss_type == 'hinge_both_annealing':
-        criterion = HingeLoss(margin=args.hinge_margin, b=args.hinge_b_start, beta=args.hinge_beta_start).to(device)
-        b_scheduler = BScheduler(b_start=args.hinge_b_start,
-                                 b_end=args.hinge_b_end,
-                                 total_epochs=args.epochs,
-                                 schedule_type='exponential')
-        beta_scheduler = BetaScheduler(beta_start=args.hinge_beta_start,
-                                       beta_end=args.hinge_beta_end,
-                                       total_epochs=args.epochs,
-                                       schedule_type='linear')
-        print(f"Using Hinge Loss with BOTH b-Annealing & β-Annealing")
-        print(f"  b: {args.hinge_b_start} -> {args.hinge_b_end} (exponential)")
-        print(f"  β: {args.hinge_beta_start} -> {args.hinge_beta_end} (linear)")
-    
     elif args.loss_type == 'vlog_fixed':
-        criterion = VlogLoss(b=args.b_value, beta=args.beta_fixed, 
-                            normalization_dim=args.normalization_dim).to(device)
-        print(f"Using Vlog Loss (fixed beta={args.beta_fixed}, b={args.b_value})")
-    
+        criterion = VlogLoss(b=args.b_value, beta=args.beta_fixed, normalization_dim=args.normalization_dim).to(device)
+        print(f"Using Vlog Loss (fixed b={args.b_value}, beta={args.beta_fixed})")
     elif args.loss_type == 'vlog_annealing':
-        criterion = VlogLoss(b=args.b_value, beta=args.beta_start, 
-                            normalization_dim=args.normalization_dim).to(device)
-        beta_scheduler = BetaScheduler(beta_start=args.beta_start, 
-                                       beta_end=args.beta_end, 
-                                       total_epochs=args.epochs,
-                                       schedule_type='linear')
-        print(f"Using Vlog Loss with Beta-Annealing (beta: {args.beta_start} -> {args.beta_end}, b={args.b_value})")
-    
-    elif args.loss_type == 'vlog_b_annealing':
-        criterion = VlogLoss(b=args.vlog_b_start, beta=args.beta_fixed, 
-                            normalization_dim=args.normalization_dim).to(device)
-        b_scheduler = BScheduler(b_start=args.vlog_b_start,
-                                b_end=args.vlog_b_end,
-                                total_epochs=args.epochs,
-                                schedule_type='exponential')
-        print(f"Using Vlog Loss with b-Annealing (b: {args.vlog_b_start} -> {args.vlog_b_end}, beta={args.beta_fixed})")
-    
-    elif args.loss_type == 'vlog_both_annealing':
-        criterion = VlogLoss(b=args.vlog_b_start, beta=args.beta_start, 
-                            normalization_dim=args.normalization_dim).to(device)
-        b_scheduler = BScheduler(b_start=args.vlog_b_start,
-                                b_end=args.vlog_b_end,
-                                total_epochs=args.epochs,
-                                schedule_type='exponential')
-        beta_scheduler = BetaScheduler(beta_start=args.beta_start,
-                                       beta_end=args.beta_end,
-                                       total_epochs=args.epochs,
-                                       schedule_type='linear')
-        print(f"Using Vlog Loss with BOTH b-Annealing & β-Annealing")
-        print(f"  b: {args.vlog_b_start} -> {args.vlog_b_end} (exponential)")
-        print(f"  β: {args.beta_start} -> {args.beta_end} (linear)")
+        criterion = VlogLoss(b=1.0, beta=args.beta_start, normalization_dim=args.normalization_dim).to(device)
+        beta_scheduler = BetaScheduler(beta_start=args.beta_start, beta_end=args.beta_end,
+                                       total_epochs=args.epochs, schedule_type='linear')
+        print(f"Using Vlog Loss (b=1 fixed, beta {args.beta_start} -> {args.beta_end})")
     
     # Optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -661,8 +434,8 @@ def main():
                 param_group['lr'] *= args.lr_decay_factor
             print(f"Learning rate decayed to {optimizer.param_groups[0]['lr']}")
         
-        train_loss, train_acc = train(model, device, train_loader, optimizer, 
-                                      criterion, epoch, args, beta_scheduler, b_scheduler)
+        train_loss, train_acc = train(model, device, train_loader, optimizer,
+                                      criterion, epoch, args, beta_scheduler)
         test_loss, test_acc = test(model, device, test_loader, criterion, args)
         
         train_losses.append(train_loss)
@@ -683,29 +456,13 @@ def main():
     print(f"Final Test Accuracy: {test_accs[-1]:.2f}%")
     print(f"Best Test Accuracy: {max(test_accs):.2f}% (Epoch {test_accs.index(max(test_accs))+1})")
     
-    # Create unique experiment name with all key parameters
     experiment_name = f'mnist_{args.loss_type}'
-    
-    # Add loss-specific parameters
     if args.loss_type == 'hinge':
         experiment_name += f'_m{args.hinge_margin}'
-    elif args.loss_type == 'hinge_b_annealing':
-        experiment_name += f'_m{args.hinge_margin}_b{args.hinge_b_start}-{args.hinge_b_end}'
-    elif args.loss_type == 'hinge_beta_annealing':
-        experiment_name += f'_m{args.hinge_margin}_beta{args.hinge_beta_start}-{args.hinge_beta_end}'
-    elif args.loss_type == 'hinge_both_annealing':
-        experiment_name += f'_m{args.hinge_margin}_b{args.hinge_b_start}-{args.hinge_b_end}_beta{args.hinge_beta_start}-{args.hinge_beta_end}'
-    elif args.loss_type.startswith('vlog'):
-        if args.loss_type == 'vlog_fixed':
-            experiment_name += f'_b{args.b_value}_beta{args.beta_fixed}'
-        elif args.loss_type == 'vlog_annealing':
-            experiment_name += f'_b{args.b_value}_beta{args.beta_start}-{args.beta_end}'
-        elif args.loss_type == 'vlog_b_annealing':
-            experiment_name += f'_b{args.vlog_b_start}-{args.vlog_b_end}_beta{args.beta_fixed}'
-        elif args.loss_type == 'vlog_both_annealing':
-            experiment_name += f'_b{args.vlog_b_start}-{args.vlog_b_end}_beta{args.beta_start}-{args.beta_end}'
-    
-    # Add training parameters (always included for uniqueness)
+    elif args.loss_type == 'vlog_fixed':
+        experiment_name += f'_b{args.b_value}_beta{args.beta_fixed}'
+    elif args.loss_type == 'vlog_annealing':
+        experiment_name += f'_beta{args.beta_start}-{args.beta_end}'
     experiment_name += f'_e{args.epochs}_bs{args.batch_size}_lr{args.lr}'
     
     # Plot training curves
@@ -743,28 +500,10 @@ def main():
         
         if args.loss_type == 'hinge':
             f.write(f"Hinge Margin: {args.hinge_margin}\n")
-        elif args.loss_type == 'hinge_b_annealing':
-            f.write(f"Hinge Margin: {args.hinge_margin}\n")
-            f.write(f"b-annealing: {args.hinge_b_start} -> {args.hinge_b_end} (exponential)\n")
-        elif args.loss_type == 'hinge_beta_annealing':
-            f.write(f"Hinge Margin: {args.hinge_margin}\n")
-            f.write(f"Beta-annealing: {args.hinge_beta_start} -> {args.hinge_beta_end} (linear)\n")
-        elif args.loss_type == 'hinge_both_annealing':
-            f.write(f"Hinge Margin: {args.hinge_margin}\n")
-            f.write(f"b-annealing: {args.hinge_b_start} -> {args.hinge_b_end} (exponential)\n")
-            f.write(f"Beta-annealing: {args.hinge_beta_start} -> {args.hinge_beta_end} (linear)\n")
         elif args.loss_type == 'vlog_fixed':
-            f.write(f"b value: {args.b_value}\n")
-            f.write(f"Fixed beta: {args.beta_fixed}\n")
+            f.write(f"b: {args.b_value}, beta: {args.beta_fixed}\n")
         elif args.loss_type == 'vlog_annealing':
-            f.write(f"b value: {args.b_value}\n")
-            f.write(f"Beta annealing: {args.beta_start} -> {args.beta_end} (linear)\n")
-        elif args.loss_type == 'vlog_b_annealing':
-            f.write(f"b-annealing: {args.vlog_b_start} -> {args.vlog_b_end} (exponential)\n")
-            f.write(f"Fixed beta: {args.beta_fixed}\n")
-        elif args.loss_type == 'vlog_both_annealing':
-            f.write(f"b-annealing: {args.vlog_b_start} -> {args.vlog_b_end} (exponential)\n")
-            f.write(f"Beta-annealing: {args.beta_start} -> {args.beta_end} (linear)\n")
+            f.write(f"b: 1 (fixed), beta: {args.beta_start} -> {args.beta_end} (linear)\n")
         
         # Training time
         f.write(f"\nTRAINING TIME:\n")
