@@ -145,7 +145,7 @@ class ResNet(nn.Module):
         x = self.tanh2(x)
         x = self.fc(x)
         x = self.bn3(x)
-        x = self.logsoftmax(x)
+       # x = self.logsoftmax(x)
 
         return x
 
@@ -199,7 +199,7 @@ class ResNet_cifar10(ResNet):
         self.avgpool = nn.AvgPool2d(8)
         self.bn2 = nn.BatchNorm1d(64*self.inflate)
         self.bn3 = nn.BatchNorm1d(10)
-        self.logsoftmax = nn.LogSoftmax()
+        #self.logsoftmax = nn.LogSoftmax()
         self.fc = BinarizeLinear(64*self.inflate, num_classes)
 
         init_model(self)
