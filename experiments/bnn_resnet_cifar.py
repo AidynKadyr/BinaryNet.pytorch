@@ -398,7 +398,7 @@ def main():
     elapsed = time.time() - t0
     best_ep = te_accs.index(best_acc) + 1
     print("=" * 70)
-    summarize_bnn_weights(model)
+    #summarize_bnn_weights(model)
     print(f"Done in {elapsed/60:.1f} min | Best test acc: {best_acc:.2f}% (epoch {best_ep})")
 
     name = f"cifar10_{args.loss}_d{args.depth}"
