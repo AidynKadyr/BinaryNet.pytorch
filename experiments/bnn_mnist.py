@@ -11,9 +11,9 @@ V_tau potential (Straziota et al., Eq. 20):
   U_tau(s) = (1/tau)(1 - s^tau)   for s > 0
   U_tau(s) = (1/tau)(1 - s)       for s <= 0
 
-where s is the classification margin (stability). As tau -> 0, this
-approaches -log(s), the log-potential that enables efficient sampling
-in the binary perceptron (Section 4.4 of Straziota et al.).
+Loss = (1/T) * U_tau(s), where T is the temperature (Straziota Eq. 12).
+As tau -> 0, this approaches -log(s)/T. Straziota found T < 1 (e.g. 0.5)
+is needed for the log-potential to suppress the spurious q=1 peak.
 
 Tau-annealing starts with tau=1 (linear potential, easy to optimize) and
 decreases toward tau~0 (log-potential, focuses on margin quality).
@@ -26,8 +26,8 @@ Architecture follows Courbariaux et al. (2016) MNIST MLP:
 Usage:
   python experiments/bnn_mnist.py --loss-type ce --epochs 40 --lr 0.01
   python experiments/bnn_mnist.py --loss-type hinge --epochs 40 --lr 0.01
-  python experiments/bnn_mnist.py --loss-type vlog_fixed --epochs 40 --lr 0.01 --tau-value 0.5
-  python experiments/bnn_mnist.py --loss-type vlog_tau_annealing --epochs 40 --lr 0.01 --tau-start 1.0 --tau-end 0.01
+  python experiments/bnn_mnist.py --loss-type vlog_fixed --epochs 40 --lr 0.01 --tau-value 0.5 --temperature 0.5
+  python experiments/bnn_mnist.py --loss-type vlog_tau_annealing --epochs 40 --lr 0.01 --tau-start 1.0 --tau-end 0.01 --temperature 0.5
 """
 
 from __future__ import print_function
@@ -70,15 +70,19 @@ class VtauLoss(nn.Module):
     U_tau(s) = (1/tau)(1 - s^tau)   for s > 0
     U_tau(s) = (1/tau)(1 - s)       for s <= 0
 
-    Stability s = (correct_logit - max_wrong_logit) / sqrt(num_classes).
+    The loss per sample is (1/T) * U_tau(s), where T is the temperature
+    (Straziota Eq. 12). Stability s = (correct - max_wrong) / sqrt(C).
 
     The 1/tau prefactor ensures the gradient for s > 0 is -s^{tau-1},
     which smoothly approaches -1/s (gradient of -log s) as tau -> 0.
+    Straziota found T < 1 (e.g. T=0.5) is needed for the log-potential
+    to suppress the spurious peak at q=1 in the binary perceptron.
     """
 
-    def __init__(self, tau=1.0, num_classes=10):
+    def __init__(self, tau=1.0, temperature=1.0, num_classes=10):
         super().__init__()
         self.tau = tau
+        self.temperature = temperature
         self.sqrt_n = np.sqrt(num_classes)
 
     def forward(self, logits, target):
@@ -104,7 +108,7 @@ class VtauLoss(nn.Module):
         if (~pos).any():
             result[~pos] = (1.0 - s[~pos]) / tau
 
-        return result.mean()
+        return result.mean() / max(self.temperature, 1e-6)
 
 
 class TauScheduler:
@@ -277,6 +281,8 @@ def main():
                    help='Starting tau for annealing')
     p.add_argument('--tau-end', type=float, default=0.01,
                    help='Final tau for annealing')
+    p.add_argument('--temperature', type=float, default=1.0,
+                   help='Temperature T in exp(-U/T) (Straziota Eq. 12, try 0.5)')
 
     p.add_argument('--plot-dir', type=str, default='experiments/plots')
     p.add_argument('--no-plot', action='store_true', default=False)
@@ -317,12 +323,12 @@ def main():
         criterion = HingeLoss(margin=args.hinge_margin)
         desc = f'Hinge (margin={args.hinge_margin})'
     elif args.loss_type == 'vlog_fixed':
-        criterion = VtauLoss(tau=args.tau_value)
-        desc = f'Vtau fixed (tau={args.tau_value})'
+        criterion = VtauLoss(tau=args.tau_value, temperature=args.temperature)
+        desc = f'Vtau fixed (tau={args.tau_value}, T={args.temperature})'
     elif args.loss_type == 'vlog_tau_annealing':
-        criterion = VtauLoss(tau=args.tau_start)
+        criterion = VtauLoss(tau=args.tau_start, temperature=args.temperature)
         tau_sched = TauScheduler(args.tau_start, args.tau_end, args.epochs)
-        desc = f'Vtau anneal (tau {args.tau_start} -> {args.tau_end})'
+        desc = f'Vtau anneal (tau {args.tau_start}->{args.tau_end}, T={args.temperature})'
 
     print(f"Loss: {desc}")
     print(f"Epochs: {args.epochs}, LR: {args.lr}, Batch: {args.batch_size}")
@@ -406,9 +412,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-# discard the following:
-# improvement: regime at the edge of overparametrization. en.
-# our method wouldh help:
-# fix the dataset do exploration from size of the model. if there is a regime in the size compared to baselines.

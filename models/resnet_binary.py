@@ -54,8 +54,6 @@ class BasicBlock(nn.Module):
 
 
         if self.downsample is not None:
-            if residual.data.max()>1:
-                import pdb; pdb.set_trace()
             residual = self.downsample(residual)
 
         out += residual
@@ -84,7 +82,6 @@ class Bottleneck(nn.Module):
 
     def forward(self, x):
         residual = x
-        import pdb; pdb.set_trace()
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.tanh(out)
