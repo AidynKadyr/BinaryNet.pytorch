@@ -24,10 +24,10 @@ Architecture follows Courbariaux et al. (2016) MNIST MLP:
   Last layer is full-precision (standard BNN practice).
 
 Usage:
-  python experiments/mnist_mcmc_experiment.py --loss-type ce --epochs 40 --lr 0.01
-  python experiments/mnist_mcmc_experiment.py --loss-type hinge --epochs 40 --lr 0.01
-  python experiments/mnist_mcmc_experiment.py --loss-type vlog_fixed --epochs 40 --lr 0.01 --tau-value 0.5
-  python experiments/mnist_mcmc_experiment.py --loss-type vlog_tau_annealing --epochs 40 --lr 0.01 --tau-start 1.0 --tau-end 0.01
+  python experiments/bnn_mnist.py --loss-type ce --epochs 40 --lr 0.01
+  python experiments/bnn_mnist.py --loss-type hinge --epochs 40 --lr 0.01
+  python experiments/bnn_mnist.py --loss-type vlog_fixed --epochs 40 --lr 0.01 --tau-value 0.5
+  python experiments/bnn_mnist.py --loss-type vlog_tau_annealing --epochs 40 --lr 0.01 --tau-start 1.0 --tau-end 0.01
 """
 
 from __future__ import print_function
@@ -406,3 +406,9 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# discard the following:
+# improvement: regime at the edge of overparametrization. en.
+# our method wouldh help:
+# fix the dataset do exploration from size of the model. if there is a regime in the size compared to baselines.
